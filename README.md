@@ -188,6 +188,41 @@ STEP files for editing in real CAD:
 > small features (Ø2.5 holes, thin cam wall) will need a tolerance pass on your specific
 > printer. PETG or a filled nylon is recommended for the disc and cam over PLA.
 
+## Manufacturing strategy: print the structure, machine the contacts
+
+A cycloidal's efficiency lives almost entirely in a few **contact interfaces**, not in the
+bulk parts. So the rule this project follows:
+
+- **3D print the structure** — ring/housing body, carrier body, motor adapter. These just
+  locate things; a 12k SLA gives accurate bores and bolt patterns, and resin tackiness
+  doesn't matter where nothing slides.
+- **Don't print the contact surfaces.** The places that rub set η, and SLA ABS-like resin
+  is tacky (high μ) and wears under Hertzian contact — the worst material exactly where it
+  matters most. This is *why* "print the housing, machine/buy everything else" is the right
+  instinct.
+
+The contacts, in order of efficiency leverage:
+
+| Interface | Carries | v1 default | Efficiency upgrade |
+|---|---|---|---|
+| Eccentric ↔ disc center | radial reduction load | **6700 bearing** (already rolling) | — |
+| Ring pin ↔ disc lobe | main reduction torque | fixed Ø3 steel dowel (**sliding**) | **rotating roller**: dowel core + hardened sleeve / needle bearing → rolling |
+| Output pin ↔ disc hole | output torque | integral printed pin (sliding) | steel pin + **bronze / IGUS bushing or roller** |
+
+**Biggest single lever: make the ring pins rotate.** A fixed pin *slides* against the lobe
+(high loss); a pin (or sleeve) that *spins* turns that into rolling contact. This is most of
+what separates a ~70% printed cycloidal from a ~90% one — largely independent of disc
+material.
+
+**The disc** is the other variable: SLA-print it for a prototype (12k gives a smooth lobe
+profile, but tacky resin + wear cap durability and η), or step up to **machined POM/acetal**
+(self-lubricating, low μ, cheap to machine) or metal for the real article. If the pins roll,
+disc material matters mostly for *wear*, not friction.
+
+This is also the **Layer B bridge**: which contacts roll vs slide, and the materials' μ, are
+exactly the inputs the analytical efficiency model needs. The manufacturing choice and the
+efficiency prediction are the same decision.
+
 ## How it's wired (single source of truth)
 
 ```
