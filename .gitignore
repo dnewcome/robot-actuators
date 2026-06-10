@@ -1,0 +1,10 @@
+# python env / caches
+.venv/
+__pycache__/
+*.pyc
+
+# OS cruft
+.DS_Store
+
+# mujoco runtime log
+MUJOCO_LOG.TXT

@@ -1,0 +1,57 @@
+<mujoco model="cycloidal_actuator_testbench">
+  <!-- Single-actuator sizing bench. Meshes are the REAL generated geometry
+       (cycloidal/out/*.stl, mm -> m via scale). Physics params (armature, gear,
+       frictionloss, damping, payload) are injected at load time by run.py from
+       actuator.py so the sim and the CAD never drift apart. -->
+
+  <compiler meshdir="../cycloidal/out" angle="degree" autolimits="true"/>
+  <option gravity="0 0 -9.81" integrator="implicitfast"/>
+
+  <default>
+    <joint damping="0.001" frictionloss="0.0" armature="0.0001"/>
+    <geom contype="0" conaffinity="0"/>  <!-- no contacts; pure mechanism -->
+  </default>
+
+  <asset>
+    <mesh name="ring"      file="ring.stl"      scale="0.001 0.001 0.001"/>
+    <mesh name="disc"      file="disc.stl"      scale="0.001 0.001 0.001"/>
+    <mesh name="carrier"   file="carrier.stl"   scale="0.001 0.001 0.001"/>
+    <material name="alu"  rgba="0.7 0.72 0.75 1"/>
+    <material name="part" rgba="0.30 0.55 0.85 1"/>
+    <material name="arm"  rgba="0.85 0.55 0.20 1"/>
+  </asset>
+
+  <worldbody>
+    <light pos="0.2 -0.2 0.4" dir="-0.4 0.4 -1"/>
+    <camera name="iso" pos="0.28 -0.28 0.22" xyaxes="0.7 0.7 0 -0.3 0.3 0.9"/>
+
+    <!-- fixed stator: housing/ring. drive axis laid along world +Y (euler -90 about X)
+         so a horizontal output arm swings under gravity in the X-Z plane. -->
+    <body name="stator" pos="0 0 0.2" euler="-90 0 0">
+      <geom type="mesh" mesh="ring" material="alu"/>
+
+      <!-- rotating output: hinge about the drive axis (local +Z == world +Y). -->
+      <body name="rotor">
+        <joint name="joint_out" type="hinge" axis="0 0 1" pos="0 0 0"/>
+        <inertial pos="0 0 0.003" mass="0.02" diaginertia="5e-6 5e-6 8e-6"/>
+        <geom type="mesh" mesh="carrier" material="part"/>
+        <geom type="mesh" mesh="disc" material="part" pos="0.0007 0 0.001"/>
+
+        <!-- test arm rigidly on the output: local +X is world +X (horizontal). -->
+        <body name="arm" pos="0 0 0.004">
+          <inertial pos="0.075 0 0" mass="0.02" diaginertia="4e-5 4e-5 1e-6"/>
+          <geom type="capsule" fromto="0 0 0 0.15 0 0" size="0.004" material="arm"/>
+          <body name="payload" pos="0.15 0 0">
+            <geom type="sphere" size="0.012" material="arm"/>
+            <inertial pos="0 0 0" mass="0.1" diaginertia="6e-6 6e-6 6e-6"/>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <!-- gear (== joint torque per amp) and ctrlrange injected by run.py -->
+    <motor name="drive" joint="joint_out" gear="0.0477" ctrllimited="true" ctrlrange="-13 13"/>
+  </actuator>
+</mujoco>
