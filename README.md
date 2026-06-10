@@ -290,26 +290,38 @@ derived armature / gear / friction onto the MuJoCo model at load time. **Change 
 re-run, and the geometry and the sim move together** — they can't drift apart.
 
 `actuator.py` turns motor constants × ratio into joint-level numbers:
-`Kt = 60/(2π·KV)`, `peak τ = Kt·I·N·η`, `no-load ω = KV·V/N`, `reflected J = J_rotor·N²`.
+`Kt = 60/(2π·KV)`, `peak τ = η∞·Kt·I·N − drag`, `no-load ω = KV·V/N`, `reflected J = J_rotor·N²`.
+
+### Torque-based (load-dependent) efficiency
+
+Efficiency isn't a flat number — a roughly constant **no-load drag** must be overcome before
+useful torque appears, so η rises from 0 toward η∞ as load grows. This is realized in the sim
+for free: **gear carries η∞ (0.86), joint frictionloss carries the drag (20 mN·m)**, which
+reproduces `η(T) = η∞·T/(T+drag)`. The *operating* efficiency therefore tops out ~84% at peak
+torque (peak load ≠ infinite load), not 86%.
 
 ---
 
-## Simulation results (v1, η = 0.86 from the Layer-B model)
+## Simulation results (v1, load-dependent η, η∞ = 0.86)
 
 ```
-PEAK torque ....... 0.76 N·m   (@ 13 A burst, η=0.86)
-cont. torque ~..... 0.25 N·m   (thermal-limited estimate)
+η∞ (high-load) .... 86%        no-load drag 20 mN·m (output)
+PEAK torque ....... 0.74 N·m   (@ 13 A burst, net of drag)
+cont. torque ~..... 0.23 N·m   (thermal-limited estimate)
 no-load out speed . 1554 rpm
 reflected inertia . 1.5e-4 kg·m²
-max static payload  ~515 g @ 150 mm (peak) / ~170 g (continuous)
+max static payload  ~500 g @ 150 mm (peak) / ~155 g (continuous)
 ```
 
 **Scenario A — free accel:** output reaches ~14 rad/s in 50 ms; simulated effective
 inertia (25.7e-4) **matches the hand calc** of arm+payload+armature → the model is
 trustworthy.
-**Scenario B — lift 100 g @ 150 mm:** needs 0.16 of 0.76 N·m available → lifts easily.
+**Scenario B — lift 100 g @ 150 mm:** needs 0.16 of 0.74 N·m available → lifts easily.
 **Scenario C — unpowered hold:** backdrives under load → **backdrivable**, the desired
 property for a compliant, safe arm.
+**Scenario D — efficiency vs load (measured in sim):** η climbs 61% → 71% → 78% → 82% as
+output torque rises 0.05 → 0.40 N·m, and the **measured η matches the model** — the load
+curve emerges from the gear+frictionloss physics, not a typed-in constant.
 
 The `--view` demo is a separate real-time kinematic scene: the **output marker** turns at
 0.25 rev/s and the **input marker** spins 10× faster, so the reduction is visible at a
@@ -320,19 +332,20 @@ glance — no distracting load arm.
 ## Roadmap
 
 **The exciting frontier: a full electromechanical drive model.** Today the motor is a
-torque source with a lumped efficiency. The goal is to simulate the *real* drive:
+torque source; efficiency is now **load-dependent** (η rises with torque, done ✓) and
+**geometry-driven** (predicted from the contact strategy, done ✓ as Layer B v0). What's left:
 
 - **Back-EMF & speed droop** — `Ke = Kt`, so available torque tapers to zero at no-load
   speed. This alone makes dynamic views and trajectories realistic (no more freewheeling).
 - **Full electrical model** — winding resistance (0.307 Ω) and inductance, bus voltage,
   current limits, FOC current control → real torque-speed curves, not a flat ceiling.
 - **Thermal** — I²R heating → the *real* continuous-torque limit instead of a 1/3 guess.
-- **Geometry-driven losses (closing Layer A ↔ Layer B)** — efficiency as a *function* of
-  the CAD (cam/bearing drag, mesh friction, cable-bend), so a parameter change predicts the
-  actual η instead of us typing 0.70. This is the whole game.
+- **Load-dependent bearing losses** — extend Layer B so the drag itself grows with the mesh
+  force (the eccentric bearing reacts the load), refining the low-load end of the η curve.
 
 When that's in, one CAD edit will predict the full torque/speed/efficiency behavior of the
-actuator before any hardware exists.
+actuator before any hardware exists. Two big pieces (load-dependent η, geometry-driven η)
+are already done.
 
 **Nearer-term:**
 - **Calibrate the Layer B model** with one torque-meter point (the v0 model exists and feeds

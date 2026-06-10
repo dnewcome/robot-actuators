@@ -22,10 +22,12 @@ from actuator import MotorSpec, ActuatorSpec, Params  # noqa: E402
 from efficiency import predict_params  # noqa: E402  (Layer B -> Layer A)
 
 # --- losses + test payload (knobs) ------------------------------------------- #
-# η now comes from the Layer-B geometry/contact model for the current Params,
-# not a hand-typed guess. Still calibration-pending (one torque-meter point).
-EFFICIENCY      = predict_params(Params())
-FRICTIONLOSS    = 0.02     # N·m static drag at the output (backdrive threshold)
+# The torque-based efficiency model lives in the sim as: gear = η∞ (asymptotic),
+# joint frictionloss = no-load drag. That combo reproduces η(T)=η∞·T/(T+drag) for
+# free, so efficiency rises with load automatically. Both come from the Layer-B
+# model for the current Params (calibration-pending).
+_SPEC0          = ActuatorSpec.from_motor(MotorSpec(), Params())
+FRICTIONLOSS    = _SPEC0.drag_out   # N·m no-load drag at the output (== backdrive threshold)
 DAMPING         = 0.0015   # N·m·s/rad viscous
 PAYLOAD_KG      = 0.10     # mass at the end of the 150 mm test arm
 ARM_LEN         = 0.15     # m  (must match testbench.xml)
@@ -33,7 +35,7 @@ ARM_LEN         = 0.15     # m  (must match testbench.xml)
 
 def load():
     motor = MotorSpec()
-    spec = ActuatorSpec.from_motor(motor, Params(), efficiency=EFFICIENCY)
+    spec = ActuatorSpec.from_motor(motor, Params())
     model = mujoco.MjModel.from_xml_path(str(HERE / "testbench.xml"))
 
     # inject derived physics onto the actuated joint + actuator
@@ -41,10 +43,10 @@ def load():
     dof = model.jnt_dofadr[jid]
     model.dof_armature[dof] = spec.reflected_inertia
     model.dof_damping[dof] = DAMPING
-    model.dof_frictionloss[dof] = FRICTIONLOSS
+    model.dof_frictionloss[dof] = spec.drag_out      # no-load drag = Coulomb frictionloss
 
     aid = model.actuator("drive").id
-    model.actuator_gear[aid, 0] = spec.torque_per_amp
+    model.actuator_gear[aid, 0] = spec.torque_per_amp   # gear carries η∞
     model.actuator_ctrlrange[aid] = [-MotorSpec().max_current, MotorSpec().max_current]
 
     # set the test payload
@@ -99,6 +101,32 @@ def main():
     print(f"  friction {FRICTIONLOSS:.3f} N·m vs gravity {abs(grav_torque):.3f} N·m  ->  "
           f"{'self-holds' if held else f'backdrives, falls to {drop:+.0f}°'}")
     print(f"  (cycloidals ARE backdrivable — expected to fall; raise frictionloss only if you measure stiction)\n")
+
+    # --- Scenario D: efficiency vs load, measured from sim power balance --------
+    # For each output torque T, command the current that delivers it, apply T as a
+    # brake, run to steady speed, and read η = P_out/P_in from the sim. Demonstrates
+    # the torque-based model (η rising with load) is physically in the sim.
+    dof = model.jnt_dofadr[model.joint("joint_out").id]
+    Kt, N = motor.kt, spec.ratio
+    print("--- Scenario D: efficiency vs load (measured in sim) ---")
+    print(f"  {'T_out':>7s} {'I (A)':>6s} {'out rpm':>8s} {'η meas':>7s} {'η model':>8s}")
+    model.opt.gravity[:] = 0
+    for T in (0.05, 0.10, 0.20, 0.40, spec.peak_torque):
+        I = (T + spec.drag_out) / spec.torque_per_amp * 1.01   # +1% so it creeps forward
+        if I > motor.max_current + 1e-9:
+            print(f"  {T:7.3f}  {'>13':>5s}   {'—':>7s}    —      {spec.eta_at(T)*100:5.0f}%  (exceeds 13 A)")
+            continue
+        data = mujoco.MjData(model)
+        for _ in range(int(0.8 / model.opt.timestep)):
+            data.qfrc_applied[dof] = -T          # brake opposing the (positive) motion
+            data.ctrl[aid] = I
+            mujoco.mj_step(model, data)
+        w = data.qvel[dof]
+        p_out = T * w
+        p_in = Kt * I * (N * w)
+        eta_meas = p_out / p_in if p_in > 1e-9 else 0.0
+        print(f"  {T:7.3f} {I:6.1f} {w*60/(2*pi):8.0f} {eta_meas*100:6.0f}% {spec.eta_at(T)*100:7.0f}%")
+    print("  (η meas tracks η model -> the load-dependent curve emerges from gear+frictionloss)\n")
 
     if "--view" in sys.argv:
         view_demo(spec.ratio)

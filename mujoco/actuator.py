@@ -12,9 +12,10 @@ from dataclasses import dataclass
 from math import pi
 from pathlib import Path
 
-# pull the gearbox ratio straight from the CAD generator so they never drift apart
+# pull the gearbox ratio + efficiency model straight from the CAD side so they never drift
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "cycloidal"))
 from drive import Params  # noqa: E402
+from efficiency import predict_params, drag_out, eta_at_load  # noqa: E402
 
 
 @dataclass
@@ -40,27 +41,36 @@ class MotorSpec:
 @dataclass
 class ActuatorSpec:
     ratio: float
-    efficiency: float
+    eta_inf: float              # asymptotic (high-load) efficiency from the Layer-B model
+    drag_out: float             # N·m no-load drag referred to the output (-> joint frictionloss)
     kt: float
     # joint-side (output) numbers
-    peak_torque: float          # N·m at burst current
+    peak_torque: float          # N·m net at burst current (drag subtracted)
     cont_torque: float          # N·m rough continuous (thermal ~1/3 burst)
     no_load_speed: float        # rad/s at the output
     reflected_inertia: float    # kg·m²  (armature seen at the joint)
-    torque_per_amp: float       # N·m/A at the joint  (== gear for a MuJoCo motor)
+    torque_per_amp: float       # N·m/A at the joint  (== gear for a MuJoCo motor, uses eta_inf)
+
+    def eta_at(self, T_out: float) -> float:
+        """Load-dependent efficiency at output torque T_out (the curve the sim realizes)."""
+        return eta_at_load(T_out, self.eta_inf, self.drag_out)
 
     @classmethod
     def from_motor(cls, motor: MotorSpec, p: Params,
-                   efficiency: float = 0.70, cont_fraction: float = 0.33):
+                   efficiency: float = None, cont_fraction: float = 0.33):
         N = p.ratio
-        tpa = motor.kt * N * efficiency
-        peak = tpa * motor.max_current
+        eta_inf = efficiency if efficiency is not None else predict_params(p)
+        d_out = drag_out(p)
+        tpa = motor.kt * N * eta_inf                  # asymptotic torque/amp (MuJoCo gear)
+        peak = tpa * motor.max_current - d_out        # net output torque (drag subtracted)
+        cont = tpa * (motor.max_current * cont_fraction) - d_out
         return cls(
             ratio=N,
-            efficiency=efficiency,
+            eta_inf=eta_inf,
+            drag_out=d_out,
             kt=motor.kt,
             peak_torque=peak,
-            cont_torque=peak * cont_fraction,
+            cont_torque=cont,
             no_load_speed=motor.no_load_speed / N,
             reflected_inertia=motor.rotor_inertia * N * N,
             torque_per_amp=tpa,
@@ -69,14 +79,19 @@ class ActuatorSpec:
     def report(self, motor: MotorSpec):
         rpm = self.no_load_speed * 60 / (2 * pi)
         print("\n=== Actuator spec (Goolsky 2204 + cycloidal) ===")
-        print(f"ratio ............. {self.ratio:.0f}:1   efficiency (lumped) {self.efficiency:.0%}")
+        print(f"ratio ............. {self.ratio:.0f}:1   η∞ (high-load) {self.eta_inf:.0%}   "
+              f"no-load drag {self.drag_out*1000:.0f} mN·m (output)")
         print(f"motor Kt .......... {self.kt*1000:.2f} mN·m/A   no-load {motor.no_load_speed*60/2/pi:.0f} rpm @ {motor.voltage} V")
-        print(f"PEAK torque ....... {self.peak_torque:.3f} N·m  (@ {motor.max_current:.0f} A burst)")
+        print(f"PEAK torque ....... {self.peak_torque:.3f} N·m  (@ {motor.max_current:.0f} A burst, net of drag)")
         print(f"cont. torque ~..... {self.cont_torque:.3f} N·m  (thermal-limited estimate)")
         print(f"no-load out speed . {self.no_load_speed:.1f} rad/s  ({rpm:.0f} rpm)")
         print(f"reflected inertia . {self.reflected_inertia*1e6:.1f}  g·cm² ×1e3  ({self.reflected_inertia:.2e} kg·m²)")
         print(f"torque / amp ...... {self.torque_per_amp:.4f} N·m/A  (MuJoCo motor gear)")
-        # a couple of headline capability numbers
+        # load-dependent efficiency curve (the torque-based model)
+        print("efficiency vs load (η rises with torque toward η∞):")
+        for frac in (0.05, 0.1, 0.25, 0.5, 1.0):
+            T = self.peak_torque * frac
+            print(f"    T_out={T:5.3f} N·m ({frac*100:3.0f}% peak) -> η = {self.eta_at(T)*100:4.0f}%")
         for L in (0.10, 0.15):
             print(f"max static payload @ {L*1000:.0f} mm = {self.peak_torque/(9.81*L)*1000:.0f} g (peak) / "
                   f"{self.cont_torque/(9.81*L)*1000:.0f} g (cont.)")

@@ -41,11 +41,38 @@ S_OUT  = 0.45   # output-pin / disc-hole contact: lighter load, shorter slip pat
 
 
 def predict(ring_contact: str, out_contact: str) -> float:
-    """Predicted total mechanical efficiency for a contact strategy."""
+    """Predicted ASYMPTOTIC (high-load) efficiency η∞ for a contact strategy.
+    This is the ceiling the load-dependent curve approaches; see eta_at_load()."""
     mu_r = CONTACT_FRICTION[ring_contact]
     mu_o = CONTACT_FRICTION[out_contact]
     eta = 1.0 - (L_BASE + S_RING * mu_r + S_OUT * mu_o)
     return max(0.0, min(1.0, eta))
+
+
+# --------------------------------------------------------------------------- #
+# Load-dependent efficiency (torque-based model)
+# --------------------------------------------------------------------------- #
+# A roughly constant no-load drag must be overcome before any useful output torque
+# appears, so η rises from 0 (no load) toward η∞ (high load). This is exactly the
+# behavior MuJoCo realizes when the gear carries η∞ and the joint carries a Coulomb
+# frictionloss = drag: T_out = η∞·N·τ_motor − drag, hence the form below.
+DRAG_TORQUE_IN = 0.002   # N·m, input-referred no-load drag (bearings + pin preload + churn).
+                         # Output-referred drag = this × ratio. CALIBRATION-PENDING: the
+                         # torque meter's no-load reading sets it directly (I0 = drag/Kt).
+
+
+def drag_out(p: Params, drag_in: float = DRAG_TORQUE_IN) -> float:
+    """No-load drag referred to the output shaft."""
+    return drag_in * p.ratio
+
+
+def eta_at_load(T_out: float, eta_inf: float, drag_out_nm: float) -> float:
+    """Efficiency at a given output torque — the curve the sim physically realizes.
+        η(T) = η∞ · T / (T + drag_out)
+    Rises from 0 at no load to η∞ at high load."""
+    if T_out <= 0:
+        return 0.0
+    return eta_inf * T_out / (T_out + drag_out_nm)
 
 
 def params_to_contacts(p: Params):
@@ -132,12 +159,25 @@ def bearing_sweep(p: Params):
     print()
 
 
+def load_curve(p: Params):
+    """η vs output torque, normalized to the no-load drag (motor-agnostic view)."""
+    eta_inf = predict_params(p)
+    d = drag_out(p)
+    print(f"=== Load-dependent efficiency (η∞={eta_inf*100:.0f}%, "
+          f"drag_out={d*1000:.0f} mN·m @ {p.ratio}:1) ===")
+    print(f"  {'T_out (N·m)':>11s}  {'η':>5s}   (η rises toward η∞ as load grows)")
+    for T in (0.02, 0.05, 0.10, 0.20, 0.40, 0.76):
+        print(f"  {T:11.2f}  {eta_at_load(T, eta_inf, d)*100:4.0f}%")
+    print()
+
+
 if __name__ == "__main__":
     p = Params()
     ring, out = params_to_contacts(p)
     loss_map()
     config_table()
     bearing_sweep(p)
+    load_curve(p)
     print(f"current config ({p.pin_mode} pins / {p.out_mode} output) -> "
-          f"contacts [{ring} / {out}] -> predicted η = {predict_params(p)*100:.0f}% "
+          f"contacts [{ring} / {out}] -> η∞ = {predict_params(p)*100:.0f}% "
           f"(calibration-pending)")
