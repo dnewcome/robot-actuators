@@ -172,11 +172,12 @@ STEP files for editing in real CAD:
 |---|---|---|---|
 | `ring.stl` | 39 × 39 × 7 | 4.6 cc | housing + motor mount; print flat, the pin pockets need clean walls |
 | `disc.stl` | 30 × 30 × 5 | 2.0 cc | the cycloidal disc; print flat, fine layers (0.1 mm) for the lobe profile |
-| `carrier.stl` | 26 × 26 × 6 | 1.1 cc | output flange + integral Ø2.5 output pins |
+| `carrier.stl` | 26 × 26 × 6 | 1.1 cc | output flange; press-fit holes for steel pins (or integral pins in `"printed"` mode) |
 | `eccentric.stl` | 10 × 10 × 4 | 0.3 cc | the cam; thinnest wall ~2.8 mm — the highest-stress part |
 
-**Bill of non-printed materials:**
-- 11 × Ø3 mm steel dowel / cut rod (ring pins)
+**Bill of non-printed materials** (printed by `drive.py`'s `hardware_bom()`, reflects the chosen contact modes):
+- 11 × Ø3 mm steel dowel (ring pins — **free-spinning** rollers in the default `pin_mode="rolling"`)
+- 6 × Ø2.5 mm steel dowel (output pins — pressed into the carrier in the default `out_mode="steel"`)
 - 1 × **6700** bearing (10×15×4) for the eccentric
 - M3 screws for the motor cross-mount (16 mm + 19 mm pairs)
 - the Goolsky 2204 motor
@@ -222,6 +223,19 @@ disc material matters mostly for *wear*, not friction.
 This is also the **Layer B bridge**: which contacts roll vs slide, and the materials' μ, are
 exactly the inputs the analytical efficiency model needs. The manufacturing choice and the
 efficiency prediction are the same decision.
+
+**This is now a `Param`, not a note.** `drive.py` encodes the contact strategy directly:
+
+| Param | Options | Effect |
+|---|---|---|
+| `pin_mode` | `"fixed"` \| `"rolling"` (default) | press-fit dowel (sliding) vs free-spinning dowel in an oversized pocket (rolling) |
+| `pin_core_dia` | `≤ pin_dia` | set `< pin_dia` for a hardened sleeve on a thin core (validator checks the sleeve wall) |
+| `out_mode` | `"printed"` \| `"steel"` (default) \| `"bushing"` | integral printed pins (sliding) → pressed steel pins (sliding, good surface) → core + rotating bushing (rolling) |
+
+The validator prints the resulting **contact strategy** (`ROLLING`/`SLIDING` per interface)
+and checks sleeve/bushing wall thicknesses; `hardware_bom()` lists exactly what to buy for
+the chosen modes. True rolling bushings on the *output* pins are tight at Ø2.5 — the
+pragmatic default is rolling ring pins + pressed steel output pins.
 
 ## How it's wired (single source of truth)
 

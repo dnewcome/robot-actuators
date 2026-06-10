@@ -60,6 +60,21 @@ class Params:
     # --- Housing ---------------------------------------------------------------
     housing_wall: float = 2.0
 
+    # --- Contact strategy (THE efficiency lever): rolling vs sliding -----------
+    # Ring pin / lobe contact carries the main reduction torque.
+    #   "fixed"   : press-fit dowel, the lobe SLIDES on it (simple, lossy — v1)
+    #   "rolling" : dowel free to spin in an oversized pocket, contact becomes ROLLING
+    # Optional hardened sleeve: set pin_core_dia < pin_dia (sleeve spins on a thin core).
+    pin_mode: str = "rolling"        # "fixed" | "rolling"
+    pin_core_dia: float = 3.0        # steel core Ø; == pin_dia means a bare floating dowel
+    pin_pocket_clear: float = 0.10   # radial clearance so a rolling dowel spins freely
+    # Output pin / disc-hole contact carries output torque.
+    #   "printed" : pins integral to the printed carrier (SLIDES, printed surface — v1)
+    #   "steel"   : Ø out_pin_dia steel dowels pressed into the carrier (SLIDES, good surface)
+    #   "bushing" : Ø out_pin_core_dia steel core + rotating bushing (ROLLING; tight at this size)
+    out_mode: str = "steel"          # "printed" | "steel" | "bushing"
+    out_pin_core_dia: float = 1.5    # bushing core Ø (only used in "bushing" mode)
+
     # --- derived ---------------------------------------------------------------
     @property
     def n_pins(self) -> int:        # ring pins
@@ -125,9 +140,42 @@ def validate(p: Params) -> bool:
     check("ring pin inside housing", p.pin_R + p.pin_dia/2 <= p.housing_od/2,
           f"pin outer {p.pin_R + p.pin_dia/2:.1f} vs housing R {p.housing_od/2:.1f}")
 
+    # 5) rolling-element walls (only when a sleeve / bushing is actually used)
+    if p.pin_mode == "rolling" and p.pin_core_dia < p.pin_dia:
+        wall = (p.pin_dia - p.pin_core_dia) / 2
+        check("ring-pin sleeve wall", wall >= 0.4,
+              f"{wall:.2f} mm  (Ø{p.pin_core_dia} core in Ø{p.pin_dia} sleeve)")
+    if p.out_mode == "bushing":
+        wall = (p.out_pin_dia - p.out_pin_core_dia) / 2
+        check("output bushing wall", wall >= 0.4,
+              f"{wall:.2f} mm  (Ø{p.out_pin_core_dia} core in Ø{p.out_pin_dia} bushing)")
+
     print(f"lobe root R ....... {p.root_R:5.2f} mm   center-bearing R {p.ecc_bearing_od/2:.2f} mm")
+    ring_contact = "ROLLING" if p.pin_mode == "rolling" else "SLIDING"
+    out_contact = {"printed": "SLIDING (printed)", "steel": "SLIDING (steel)",
+                   "bushing": "ROLLING"}[p.out_mode]
+    print(f"contact strategy .. ring pin/lobe: {ring_contact}   output pin/hole: {out_contact}")
+    print("                   (rolling ring pins are the biggest single efficiency lever)")
     print(f"=> {'ALL GOOD' if ok else 'HAS CONFLICTS — adjust params above'}\n")
     return ok
+
+
+def hardware_bom(p: Params):
+    """Non-printed parts to buy/cut for this configuration."""
+    print("=== Hardware (non-printed) ===")
+    if p.pin_mode == "rolling" and p.pin_core_dia < p.pin_dia:
+        print(f"  ring pins:   {p.n_pins} x Ø{p.pin_core_dia} steel core + Ø{p.pin_dia} hardened sleeve (rolling)")
+    else:
+        kind = "free-spinning" if p.pin_mode == "rolling" else "press-fit"
+        print(f"  ring pins:   {p.n_pins} x Ø{p.pin_dia} steel dowel ({kind})")
+    if p.out_mode == "printed":
+        print("  output pins: integral printed — upgrade to 'steel' for efficiency")
+    elif p.out_mode == "steel":
+        print(f"  output pins: {p.n_out} x Ø{p.out_pin_dia} steel dowel (pressed into carrier)")
+    else:
+        print(f"  output pins: {p.n_out} x Ø{p.out_pin_core_dia} steel core + Ø{p.out_pin_dia} bushing (rolling)")
+    print(f"  bearing:     1 x {p.ecc_bearing_id:.0f}x{p.ecc_bearing_od:.0f}x{p.ecc_bearing_w:.0f} (6700-type) for the eccentric")
+    print("  screws:      4 x M3 (16 mm + 19 mm cross pattern)\n")
 
 
 # ----------------------------------------------------------------------------- #
@@ -175,9 +223,11 @@ def make_ring(p: Params):
         Cylinder(radius=p.housing_od/2, height=h, align=(None, None, None))
         # cavity the disc swings in (clearance = E so the offset disc never hits the bore)
         Cylinder(radius=p.pin_R - p.pin_dia/2 + 0.2, height=h, mode=Mode.SUBTRACT)
-        # ring-pin pockets (half-open toward the cavity)
+        # ring-pin pockets (half-open toward the cavity). "rolling" oversizes the
+        # pocket so the dowel spins freely (rolling lobe contact); "fixed" is press-fit.
+        pocket_r = p.pin_dia/2 + (p.pin_pocket_clear if p.pin_mode == "rolling" else 0.0)
         with PolarLocations(p.pin_R, p.n_pins):
-            Hole(radius=p.pin_dia/2)
+            Hole(radius=pocket_r)
         # motor mount: 2204 cross pattern — 16 mm pair on X, 19 mm pair on Y, M3
         mount_pts = [(p.motor_mount_x/2, 0), (-p.motor_mount_x/2, 0),
                      (0, p.motor_mount_y/2), (0, -p.motor_mount_y/2)]
@@ -200,15 +250,22 @@ def make_eccentric(p: Params):
 
 
 def make_carrier(p: Params):
-    """Output flange + integral output pins that pass through the disc holes."""
+    """Output flange. "printed": integral pins. "steel"/"bushing": press-fit holes for
+    steel output pins (the efficiency upgrade — steel/rolling instead of a printed slide)."""
     plate_t = 3.0
     pin_len = p.disc_thickness + 1.0
     with BuildPart() as car:
         Cylinder(radius=p.root_R, height=plate_t, align=(None, None, None))
         Hole(radius=p.ecc_bearing_od/2 + 0.5)          # clear the eccentric
-        with PolarLocations(p.out_circle_dia/2, p.n_out):
-            Cylinder(radius=p.out_pin_dia/2, height=pin_len,
-                     align=(None, None, None), mode=Mode.ADD)
+        if p.out_mode == "printed":
+            with PolarLocations(p.out_circle_dia/2, p.n_out):
+                Cylinder(radius=p.out_pin_dia/2, height=pin_len,
+                         align=(None, None, None), mode=Mode.ADD)
+        else:
+            # press-fit holes: steel pin OD ("steel") or bushing core ("bushing")
+            press_d = p.out_pin_core_dia if p.out_mode == "bushing" else p.out_pin_dia
+            with PolarLocations(p.out_circle_dia/2, p.n_out):
+                Hole(radius=press_d/2)
         # TODO: output shaft / hub bolt pattern once arm joint interface is decided
     return car.part
 
@@ -245,6 +302,7 @@ def build(p: Params, outdir: Path):
 if __name__ == "__main__":
     p = Params()
     feasible = validate(p)
+    hardware_bom(p)
     out = Path(__file__).parent / "out"
     build(p, out)
     print(f"Done -> {out}  (feasible={feasible})")
