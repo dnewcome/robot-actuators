@@ -17,10 +17,14 @@ import numpy as np
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(HERE.parent / "cycloidal"))
 from actuator import MotorSpec, ActuatorSpec, Params  # noqa: E402
+from efficiency import predict_params  # noqa: E402  (Layer B -> Layer A)
 
 # --- losses + test payload (knobs) ------------------------------------------- #
-EFFICIENCY      = 0.70     # lumped; Layer-B model / torque-meter refine this
+# η now comes from the Layer-B geometry/contact model for the current Params,
+# not a hand-typed guess. Still calibration-pending (one torque-meter point).
+EFFICIENCY      = predict_params(Params())
 FRICTIONLOSS    = 0.02     # N·m static drag at the output (backdrive threshold)
 DAMPING         = 0.0015   # N·m·s/rad viscous
 PAYLOAD_KG      = 0.10     # mass at the end of the 150 mm test arm

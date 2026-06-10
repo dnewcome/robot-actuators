@@ -69,10 +69,14 @@ This is what MuJoCo is good at, and it's wired up today (`mujoco/`).
 Capstan efficiency = capstan equation + cable-bend hysteresis + bearing drag; gear
 efficiency = mesh-friction formulas. These evaluate in microseconds — faster and more
 trustworthy than any sim for *efficiency*. Escalate to FEA / multibody contact only near a
-margin. A digital torque meter validates a single point. **Layer B is not built yet** — the
-efficiency numbers in the sim today are *assumptions* (see Roadmap).
+margin. A digital torque meter validates a single point. **Layer B v0 exists**
+(`cycloidal/efficiency.py`): it predicts η per contact strategy and feeds that number into
+the sim — so the MuJoCo η is no longer a hand-typed guess. The model's coefficients are
+*calibration-pending* (one torque-meter point pins them down); the relative ranking of
+strategies is already robust (see "Efficiency model" below).
 
-CAD feeds both: mass/inertia → MuJoCo; key dimensions → the analytical model.
+CAD feeds both: mass/inertia → MuJoCo; key dimensions → the analytical model. And the loop
+is closed: **Layer B predicts η → Layer A (the sim) consumes it**, all from the same Params.
 
 ---
 
@@ -84,11 +88,12 @@ robot-actuators/
 ├── .venv/                     # python env (build123d, mujoco, numpy)
 ├── cycloidal/
 │   ├── drive.py               # parametric build123d generator + feasibility validator
+│   ├── efficiency.py          # Layer B v0: η per contact strategy + needle-bearing fit sweep
 │   └── out/                   # generated: disc/ring/eccentric/carrier .step + .stl, assembly.step
 └── mujoco/
     ├── actuator.py            # MotorSpec + ActuatorSpec: motor constants × ratio → joint numbers
     ├── testbench.xml          # Layer-A sizing scene (real meshes + load arm + payload)
-    ├── run.py                 # injects physics from actuator.py, runs sizing scenarios; --view demo
+    ├── run.py                 # injects physics + Layer-B η; runs sizing scenarios; --view demo
     └── viewer_scene.xml       # minimal real-time kinematic demo (no load arm)
 ```
 
@@ -104,13 +109,16 @@ python3 -m venv .venv
 # 1) generate CAD (edit Params in cycloidal/drive.py, then):
 .venv/bin/python cycloidal/drive.py        # prints feasibility report, writes cycloidal/out/*
 
-# 2) actuator spec sheet (motor × gearbox -> joint numbers):
+# 2) Layer-B efficiency model (η per contact strategy + needle-bearing fit sweep):
+.venv/bin/python cycloidal/efficiency.py
+
+# 3) actuator spec sheet (motor × gearbox -> joint numbers):
 .venv/bin/python mujoco/actuator.py
 
-# 3) Layer-A sizing sim (headless, prints lift / backdrive scenarios):
+# 4) Layer-A sizing sim (headless; uses the Layer-B η; prints lift / backdrive scenarios):
 .venv/bin/python mujoco/run.py
 
-# 4) look at the mechanism (real-time, needs a display):
+# 5) look at the mechanism (real-time, needs a display):
 .venv/bin/python mujoco/run.py --view
 ```
 
@@ -237,6 +245,37 @@ and checks sleeve/bushing wall thicknesses; `hardware_bom()` lists exactly what 
 the chosen modes. True rolling bushings on the *output* pins are tight at Ø2.5 — the
 pragmatic default is rolling ring pins + pressed steel output pins.
 
+## Efficiency model (Layer B v0) — can rolling elements help?
+
+`cycloidal/efficiency.py` is the analytical half of Layer B. It predicts η from the contact
+strategy (friction-coefficient based, coefficients **calibration-pending** — one torque-meter
+point tunes them) and feeds that number straight into the sim. Predicted η by strategy:
+
+| Strategy | ring / output contact | predicted η |
+|---|---|---|
+| all printed (worst) | sliding / sliding | ~65% |
+| steel pins, sliding | sliding / sliding | ~77% |
+| **default: rolling pins + steel output** | rolling / sliding | **~86%** |
+| sleeves both | rolling / rolling | ~90% |
+| needle bearings everywhere | rolling / rolling | ~93% |
+
+**The finding:** most of the gain (65 → 86%, **+21 points**) is already captured by the cheap
+default — free-spinning ring pins. Going further to full needle bearings adds only **+4–7
+points**, and at this size it's mechanically awkward:
+
+```
+needle-bearing fit sweep (current Ø3 pins, housing Ø39):
+  Ø2.5 loose-needle build ...... drop-in (replaces current pins)
+  Ø4 loose-needle .............. grow drive to Ø26
+  HK0408 drawn cup (Ø8) ........ grow drive to Ø44
+  HK0509 drawn cup (Ø9) ........ grow drive to Ø48
+```
+
+So: **rolling ring pins are the high-value move; needle bearings are diminishing returns**
+that cost compactness — unless you build the marginal Ø2.5 loose-needle rollers, which fit
+as-is. The model's *relative* ranking is robust (driven by μ ratios); the absolute numbers
+wait on the torque meter.
+
 ## How it's wired (single source of truth)
 
 ```
@@ -255,20 +294,20 @@ re-run, and the geometry and the sim move together** — they can't drift apart.
 
 ---
 
-## Simulation results (v1, η = 0.70 assumed)
+## Simulation results (v1, η = 0.86 from the Layer-B model)
 
 ```
-PEAK torque ....... 0.62 N·m   (@ 13 A burst)
-cont. torque ~..... 0.20 N·m   (thermal-limited estimate)
+PEAK torque ....... 0.76 N·m   (@ 13 A burst, η=0.86)
+cont. torque ~..... 0.25 N·m   (thermal-limited estimate)
 no-load out speed . 1554 rpm
 reflected inertia . 1.5e-4 kg·m²
-max static payload  ~420 g @ 150 mm (peak) / ~140 g (continuous)
+max static payload  ~515 g @ 150 mm (peak) / ~170 g (continuous)
 ```
 
-**Scenario A — free accel:** output reaches 11.7 rad/s in 50 ms; simulated effective
+**Scenario A — free accel:** output reaches ~14 rad/s in 50 ms; simulated effective
 inertia (25.7e-4) **matches the hand calc** of arm+payload+armature → the model is
 trustworthy.
-**Scenario B — lift 100 g @ 150 mm:** needs 0.16 of 0.62 N·m available → lifts easily.
+**Scenario B — lift 100 g @ 150 mm:** needs 0.16 of 0.76 N·m available → lifts easily.
 **Scenario C — unpowered hold:** backdrives under load → **backdrivable**, the desired
 property for a compliant, safe arm.
 
@@ -296,7 +335,8 @@ When that's in, one CAD edit will predict the full torque/speed/efficiency behav
 actuator before any hardware exists.
 
 **Nearer-term:**
-- Build the **Layer B analytical efficiency model** (the η in the sim is still a guess).
+- **Calibrate the Layer B model** with one torque-meter point (the v0 model exists and feeds
+  the sim; the coefficients are still estimates). Extend it with load-dependent bearing losses.
 - Drop this actuator into the real arm MJCF as a reusable joint module.
 - Model the missing hardware: output support bearing pocket, motor pilot boss, output
   shaft / arm-joint interface (so it's actually printable).
