@@ -61,9 +61,9 @@ The hard-won insight that shapes this whole repo:
 So the problem splits cleanly:
 
 **Layer A — "Does this actuator make the arm work?" → MuJoCo.**
-Model each joint with a parametric actuator (gear ratio, peak/continuous torque, reflected
-inertia, mass, lumped efficiency). Output: the torque/speed/mass envelope each joint needs.
-This is what MuJoCo is good at, and it's wired up today (`mujoco/`).
+Model each joint with a parametric actuator (gear ratio, reflected inertia, mass, a
+load-dependent efficiency, and a back-EMF torque-speed curve). Output: the torque/speed/mass
+envelope each joint needs. This is what MuJoCo is good at, and it's wired up today (`mujoco/`).
 
 **Layer B — "Can this drive beat the efficiency ceiling?" → analytical, NOT a sim.**
 Capstan efficiency = capstan equation + cable-bend hysteresis + bearing drag; gear
@@ -290,7 +290,9 @@ derived armature / gear / friction onto the MuJoCo model at load time. **Change 
 re-run, and the geometry and the sim move together** — they can't drift apart.
 
 `actuator.py` turns motor constants × ratio into joint-level numbers:
-`Kt = 60/(2π·KV)`, `peak τ = η∞·Kt·I·N − drag`, `no-load ω = KV·V/N`, `reflected J = J_rotor·N²`.
+`Kt = 60/(2π·KV)`, `peak τ = η∞·Kt·I·N − drag`, `no-load ω = KV·V/N`, `reflected J = J_rotor·N²`,
+and the back-EMF current limit `I = (throttle·V − Ke·ω)/R`. η∞ and `drag` come from
+`efficiency.py` (Layer B), so the whole chain is one source of truth.
 
 ### Torque-based (load-dependent) efficiency
 
@@ -385,9 +387,14 @@ hardware exists. Remaining items refine transients (L/FOC) and thermal limits.
 
 ## Caveats baked into the code
 
-- **η = 0.70 is an assumption, not a result.** MuJoCo can't derive efficiency — that's
-  Layer B. The code says so where it matters.
-- **No back-EMF yet.** The simple motor model has no speed ceiling, so under light load it
-  freewheels past the real ~1554 rpm limit (reported separately). Fine for torque/inertia
-  sizing; the dynamic view is kinematic on purpose until back-EMF lands.
-- The viewer treats the rotor as rigid — the cycloidal disc's nutation isn't animated.
+- **η is model-derived but calibration-pending.** Efficiency now comes from the Layer-B
+  contact model (η∞ ≈ 0.86), is load-dependent, and feeds the sim — but the model's
+  coefficients are estimates. One torque-meter point (no-load drag → `drag`; a loaded point →
+  η∞) locks the absolute numbers. The *shape* (load-dependent, geometry-driven) is right; the
+  *absolute* values aren't validated yet.
+- **Electrical model is steady-state.** Back-EMF, resistance, bus voltage, and the current
+  limit are in (real torque-speed curve), but winding inductance (L) and explicit FOC current
+  dynamics are not — transient current response is idealized. Fine for sizing/torque-speed.
+- **Continuous torque is a guess** (~1/3 of peak) until a thermal model replaces it.
+- **The kinematic viewer treats the rotor as rigid** — the cycloidal disc's nutation isn't
+  animated (it's a look-at-the-mechanism demo, not a contact simulation).
