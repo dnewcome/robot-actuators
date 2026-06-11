@@ -33,9 +33,32 @@ class MotorSpec:
         return 60.0 / (2.0 * pi * self.kv)
 
     @property
+    def ke(self) -> float:
+        """Back-EMF constant, V·s/rad. In SI, Ke == Kt."""
+        return self.kt
+
+    @property
     def no_load_speed(self) -> float:
         """Motor no-load speed, rad/s, at `voltage`."""
         return self.kv * self.voltage * 2.0 * pi / 60.0
+
+    @property
+    def stall_current(self) -> float:
+        """Current at zero speed, full voltage (V/R) — far above the rating."""
+        return self.voltage / self.resistance
+
+    @property
+    def corner_speed(self) -> float:
+        """Motor speed (rad/s) where the back-EMF-natural current falls to max_current.
+        Below this the motor is current-limited (flat torque); above, voltage-limited."""
+        return (self.voltage - self.max_current * self.resistance) / self.ke
+
+    def current_at(self, omega_motor: float, throttle: float = 1.0) -> float:
+        """Back-EMF-limited current at motor speed `omega_motor`, throttle ∈ [-1, 1].
+            I = (throttle·V − Ke·ω) / R,  clamped to ±max_current."""
+        v = throttle * self.voltage
+        I = (v - self.ke * omega_motor) / self.resistance
+        return max(-self.max_current, min(self.max_current, I))
 
 
 @dataclass
@@ -54,6 +77,12 @@ class ActuatorSpec:
     def eta_at(self, T_out: float) -> float:
         """Load-dependent efficiency at output torque T_out (the curve the sim realizes)."""
         return eta_at_load(T_out, self.eta_inf, self.drag_out)
+
+    def torque_at_speed(self, omega_out: float, motor: "MotorSpec", throttle: float = 1.0) -> float:
+        """Available NET output torque at output speed omega_out, including back-EMF
+        current limiting and no-load drag. The realistic torque-speed envelope."""
+        I = motor.current_at(omega_out * self.ratio, throttle)
+        return max(0.0, self.torque_per_amp * I - self.drag_out)
 
     @classmethod
     def from_motor(cls, motor: MotorSpec, p: Params,
@@ -92,6 +121,13 @@ class ActuatorSpec:
         for frac in (0.05, 0.1, 0.25, 0.5, 1.0):
             T = self.peak_torque * frac
             print(f"    T_out={T:5.3f} N·m ({frac*100:3.0f}% peak) -> η = {self.eta_at(T)*100:4.0f}%")
+        # torque-speed envelope (back-EMF): flat-then-droop to zero at no-load speed
+        corner_out = motor.corner_speed / self.ratio
+        print(f"torque-speed (full throttle): current-limited below {corner_out*60/2/pi:.0f} rpm, "
+              f"then droops to 0 at {self.no_load_speed*60/2/pi:.0f} rpm")
+        for rpm in (0, 250, 500, 1000, 1250, 1500):
+            w = rpm * 2 * pi / 60
+            print(f"    {rpm:5d} rpm -> {self.torque_at_speed(w, motor):5.3f} N·m")
         for L in (0.10, 0.15):
             print(f"max static payload @ {L*1000:.0f} mm = {self.peak_torque/(9.81*L)*1000:.0f} g (peak) / "
                   f"{self.cont_torque/(9.81*L)*1000:.0f} g (cont.)")

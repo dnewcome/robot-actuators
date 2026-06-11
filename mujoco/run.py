@@ -64,9 +64,20 @@ def settle_angle(model, data, ctrl, t, aid):
     return data.qpos[0], data.qvel[0]
 
 
+def drive_voltage(model, data, throttle, t, aid, motor, N, dof):
+    """Step with a throttle (voltage) command; current is back-EMF limited each step."""
+    n = int(t / model.opt.timestep)
+    for _ in range(n):
+        data.ctrl[aid] = motor.current_at(data.qvel[dof] * N, throttle)
+        mujoco.mj_step(model, data)
+    return data.qpos[dof], data.qvel[dof]
+
+
 def main():
     model, spec, motor, aid = load()
     spec.report(motor)
+    dof = model.jnt_dofadr[model.joint("joint_out").id]
+    Kt, N = motor.kt, spec.ratio
 
     # --- Scenario A: free angular acceleration (gravity off) -> verify inertia --
     model.opt.gravity[:] = 0
@@ -80,16 +91,17 @@ def main():
     print(f"  output reached {v:6.1f} rad/s in 50 ms  ->  effective inertia {I_eff*1e4:.2f}e-4 kg·m²")
     print(f"  (reflected motor inertia alone = {spec.reflected_inertia*1e4:.2f}e-4; rest is arm+payload)\n")
 
-    # --- Scenario B: lift the test arm from horizontal (gravity on) ------------
+    # --- Scenario B: lift the test arm from horizontal (gravity on, full throttle) --
     model.opt.gravity[:] = (0, 0, -9.81)
     data = mujoco.MjData(model)
     mujoco.mj_forward(model, data)
     grav_torque = data.qfrc_bias[0]   # torque needed to hold at horizontal
-    q, _ = settle_angle(model, data, MotorSpec().max_current, 0.6, aid)
+    q, w = drive_voltage(model, data, 1.0, 0.6, aid, motor, N, dof)
     lifted = np.degrees(q)
-    print("--- Scenario B: lift 100 g @ 150 mm from horizontal (peak current) ---")
+    print("--- Scenario B: lift 100 g @ 150 mm from horizontal (full throttle) ---")
     print(f"  gravity hold torque needed = {abs(grav_torque):.3f} N·m   (peak avail {spec.peak_torque:.3f})")
-    print(f"  arm swung to {lifted:+.0f}°  ->  {'LIFTS ✓' if lifted > 60 else 'STALLS ✗'}\n")
+    print(f"  arm swung to {lifted:+.0f}° at {abs(w)*60/2/pi:.0f} rpm  ->  "
+          f"{'LIFTS ✓' if lifted > 60 else 'STALLS ✗'}  (back-EMF now caps the speed)\n")
 
     # --- Scenario C: backdrivability (no power, gravity on) --------------------
     data = mujoco.MjData(model)
@@ -106,8 +118,6 @@ def main():
     # For each output torque T, command the current that delivers it, apply T as a
     # brake, run to steady speed, and read η = P_out/P_in from the sim. Demonstrates
     # the torque-based model (η rising with load) is physically in the sim.
-    dof = model.jnt_dofadr[model.joint("joint_out").id]
-    Kt, N = motor.kt, spec.ratio
     print("--- Scenario D: efficiency vs load (measured in sim) ---")
     print(f"  {'T_out':>7s} {'I (A)':>6s} {'out rpm':>8s} {'η meas':>7s} {'η model':>8s}")
     model.opt.gravity[:] = 0
@@ -127,6 +137,34 @@ def main():
         eta_meas = p_out / p_in if p_in > 1e-9 else 0.0
         print(f"  {T:7.3f} {I:6.1f} {w*60/(2*pi):8.0f} {eta_meas*100:6.0f}% {spec.eta_at(T)*100:7.0f}%")
     print("  (η meas tracks η model -> the load-dependent curve emerges from gear+frictionloss)\n")
+
+    # --- Scenario E: torque-speed curve traced from a real spin-up (back-EMF) ----
+    # Full throttle, no load. As the output accelerates, back-EMF cuts the current,
+    # so the delivered torque is flat then droops to zero near no-load speed.
+    print("--- Scenario E: torque-speed curve (back-EMF, traced in sim spin-up) ---")
+    model.opt.gravity[:] = 0
+    pid = model.body("payload").id
+    model.body_mass[pid] = 0.001                  # light, so it reaches high speed quickly
+    data = mujoco.MjData(model)
+    mujoco.mj_forward(model, data)
+    targets, got = [0, 250, 500, 750, 1000, 1250], {}
+    for _ in range(int(4.0 / model.opt.timestep)):
+        rpm = data.qvel[dof] * 60 / (2 * pi)
+        I = motor.current_at(data.qvel[dof] * N, 1.0)
+        tau = max(0.0, spec.torque_per_amp * I - spec.drag_out)
+        for tgt in targets:
+            if tgt not in got and rpm >= tgt:
+                got[tgt] = tau
+        data.ctrl[aid] = I
+        mujoco.mj_step(model, data)
+    model.body_mass[pid] = PAYLOAD_KG             # restore
+    print(f"  {'rpm':>6s} {'τ meas':>8s} {'τ model':>8s}")
+    for tgt in targets:
+        if tgt in got:
+            w = tgt * 2 * pi / 60
+            print(f"  {tgt:6d} {got[tgt]:7.3f}  {spec.torque_at_speed(w, motor):7.3f}")
+    print(f"  flat to ~{motor.corner_speed/N*60/2/pi:.0f} rpm (current-limited), "
+          f"then droops to 0 at {spec.no_load_speed*60/2/pi:.0f} rpm (voltage-limited).\n")
 
     if "--view" in sys.argv:
         view_demo(spec.ratio)

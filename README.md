@@ -300,6 +300,19 @@ for free: **gear carries η∞ (0.86), joint frictionloss carries the drag (20 m
 reproduces `η(T) = η∞·T/(T+drag)`. The *operating* efficiency therefore tops out ~84% at peak
 torque (peak load ≠ infinite load), not 86%.
 
+### Back-EMF and the torque-speed curve
+
+The motor is now driven by **throttle (voltage)**, not raw current. At speed it generates
+back-EMF (`Ke = Kt`), so the available current is `I = (throttle·V − Ke·ω) / R`, clamped to
+the 13 A rating. That yields the real two-regime envelope:
+
+- **current-limited** (flat ~0.74 N·m) below the corner speed (~995 rpm out), where the rating
+  caps the current;
+- **voltage-limited** above it, torque drooping linearly to **zero at the 1554 rpm no-load
+  speed** as back-EMF eats the headroom.
+
+No more freewheeling: a free spin settles at no-load speed instead of accelerating forever.
+
 ---
 
 ## Simulation results (v1, load-dependent η, η∞ = 0.86)
@@ -322,6 +335,9 @@ property for a compliant, safe arm.
 **Scenario D — efficiency vs load (measured in sim):** η climbs 61% → 71% → 78% → 82% as
 output torque rises 0.05 → 0.40 N·m, and the **measured η matches the model** — the load
 curve emerges from the gear+frictionloss physics, not a typed-in constant.
+**Scenario E — torque-speed curve (traced in a sim spin-up):** under full throttle the
+delivered torque holds ~0.74 N·m to ~995 rpm, then droops (0.39 N·m @ 1250 rpm) toward zero at
+1554 rpm — the back-EMF envelope, measured as the output accelerates.
 
 The `--view` demo is a separate real-time kinematic scene: the **output marker** turns at
 0.25 rev/s and the **input marker** spins 10× faster, so the reduction is visible at a
@@ -331,21 +347,19 @@ glance — no distracting load arm.
 
 ## Roadmap
 
-**The exciting frontier: a full electromechanical drive model.** Today the motor is a
-torque source; efficiency is now **load-dependent** (η rises with torque, done ✓) and
-**geometry-driven** (predicted from the contact strategy, done ✓ as Layer B v0). What's left:
+**The exciting frontier: a full electromechanical drive model.** Done so far: efficiency is
+**load-dependent** (η rises with torque ✓), **geometry-driven** (predicted from the contact
+strategy ✓ Layer B v0), and the motor now has **back-EMF + a real torque-speed curve** driven
+by throttle/voltage with current limiting (✓). What's left:
 
-- **Back-EMF & speed droop** — `Ke = Kt`, so available torque tapers to zero at no-load
-  speed. This alone makes dynamic views and trajectories realistic (no more freewheeling).
-- **Full electrical model** — winding resistance (0.307 Ω) and inductance, bus voltage,
-  current limits, FOC current control → real torque-speed curves, not a flat ceiling.
+- **Winding inductance (L) + fast current dynamics** — the steady-state electrical model (R,
+  V, back-EMF, current limit) is in; add L and explicit FOC for transient current response.
 - **Thermal** — I²R heating → the *real* continuous-torque limit instead of a 1/3 guess.
 - **Load-dependent bearing losses** — extend Layer B so the drag itself grows with the mesh
   force (the eccentric bearing reacts the load), refining the low-load end of the η curve.
 
-When that's in, one CAD edit will predict the full torque/speed/efficiency behavior of the
-actuator before any hardware exists. Two big pieces (load-dependent η, geometry-driven η)
-are already done.
+One CAD edit already predicts geometry → efficiency(load) → torque-speed behavior before any
+hardware exists. Remaining items refine transients (L/FOC) and thermal limits.
 
 **Nearer-term:**
 - **Calibrate the Layer B model** with one torque-meter point (the v0 model exists and feeds
