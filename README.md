@@ -168,9 +168,9 @@ drives the eccentric directly — the arrangement the design assumed.
 | Param | Value | Notes |
 |---|---|---|
 | Ratio | **4.0:1** | `1 + n_ring/n_sun`; sun in, ring fixed, carrier out |
-| Teeth (sun / planet / ring) | 12 / 12 / 36 | `n_ring = n_sun + 2·n_planet`; module 0.5 mm |
+| Teeth (sun / planet / ring) | 12 / 12 / 36 | `n_ring = n_sun + 2·n_planet`; module 0.75 mm (printable teeth) |
 | Planets | 4 | equal-spaced: `(n_sun+n_ring) % n_planets == 0` |
-| Gear Ø (PCD) | sun Ø6 / planet Ø6 / ring Ø18 | sun bores over the 3 mm motor shaft |
+| Gear Ø (PCD) | sun Ø9 / planet Ø9 / ring Ø27 | sun bores over the 3 mm motor shaft |
 | Mesh quality | machined (~97%) | `planet_material` sets stage η (`printed` ~94%) |
 
 Geometry is generated as real involute teeth (`cycloidal/gears.py`): external `SpurGear`s for
@@ -205,36 +205,37 @@ lobe depth **1.40 mm = 2E** exactly, and nests inside the Ø32 pin circle.
 
 ## 3D printing
 
-Every run of `drive.py` writes **watertight STLs** (verified — slicers accept them) plus
-STEP files for editing in real CAD:
+Every run of `drive.py` writes **watertight STLs** (verified — slicers accept them) plus STEP
+files. The parts assemble on a **single axial datum** (`Params.stack()`) into an enclosed can —
+the same datum drives the viewer, so the CAD and the animation can't disagree.
 
-| Part | STL bbox (mm) | Volume | Print notes |
-|---|---|---|---|
-| `ring.stl` | 39 × 39 × 7 | 4.6 cc | housing + motor mount; print flat, the pin pockets need clean walls |
-| `disc.stl` | 30 × 30 × 5 | 2.0 cc | the cycloidal disc; print flat, fine layers (0.1 mm) for the lobe profile |
-| `carrier.stl` | 26 × 26 × 6 | 1.1 cc | output flange; press-fit holes for steel pins (or integral pins in `"printed"` mode) |
-| `eccentric.stl` | 10 × 10 × 4 | 0.3 cc | the cam; thinnest wall ~2.8 mm — the highest-stress part |
+| Part | STL bbox (mm) | Role / print notes |
+|---|---|---|
+| `housing.stl` | Ø40 × 20.5 | integrated case: motor-mount flange + **stepped cavity** (wide for the planetary ring, narrow for the cyclo disc) + cyclo pin pockets + cap bolts. Print flat (flange down). |
+| `output_cap.stl` | Ø40 × 8 | end cap with the **688 output-bearing pocket** + hub through-hole + 4 bolts |
+| `planet_ring.stl` | Ø34 × 4 | internal involute ring gear; presses into the housing's planetary seat |
+| `carrier_eccentric.stl` | Ø30 × 6.5 | **merged** planet carrier + eccentric journal; planet-dowel holes + offset cam boss |
+| `disc.stl` | Ø30 × 5 | the cycloidal disc; print flat, fine layers (0.1 mm) for the lobe profile |
+| `output_carrier.stl` | Ø26 × 9.5 | output flange + **Ø8 hub** (the output shaft, rides in the cap bearing) |
+| `sun.stl` / `planet.stl` | Ø10.5 × 4 | module-0.75 involute gears (sun bored for the shaft, planets for their dowels) |
 
-**Bill of non-printed materials** (printed by `drive.py`'s `hardware_bom()`, reflects the chosen contact modes):
+**Bill of non-printed materials** (`drive.py`'s `hardware_bom()`):
 - 11 × Ø3 mm steel dowel (ring pins — **free-spinning** rollers in the default `pin_mode="rolling"`)
-- 6 × Ø2.5 mm steel dowel (output pins — pressed into the carrier in the default `out_mode="steel"`)
-- 1 × **6700** bearing (10×15×4) for the eccentric
-- **planetary gearset** — Ø6 sun + 4 × Ø6 planet + Ø18 internal ring, module 0.5 (machined/MOD
-  gears for η, or SLA-printed for a prototype); 4 × planet idler pins on the carrier
-- M3 screws for the motor cross-mount (16 mm + 19 mm pairs)
+- 6 × Ø2.5 mm steel dowel (output pins — pressed into the output carrier)
+- 4 × Ø1.5 mm steel dowel (**planet idlers** — press into the carrier; planets spin on these)
+- 1 × **6700** bearing (10×15×4) on the carrier's eccentric journal
+- 1 × **688** bearing (8×16×5) in the end cap (output support)
+- **planetary gearset** — Ø9 sun + 4 × Ø9 planet + Ø27 internal ring, module 0.75 (machined/MOD
+  gears for η + durability, or SLA-printed for a prototype)
+- 8 × M3 screws (4 motor cross-mount @ 16/19 mm + 4 end-cap)
 - the Goolsky 2204 motor
 
-> The planetary gears (`sun.stl`, `planet.stl`, `planet_ring.stl`, `planet_carrier.stl`) are
-> generated alongside the cycloidal parts. At module 0.5 they print on a 12k SLA but are the
-> first candidates to *machine/buy* — small-module teeth are where print tolerance bites.
-
-> **Status — printable geometry, not a finished gearbox.** This is a *kinematic / fit*
-> prototype: the eight parts print and assemble to demonstrate the 40:1 hybrid mechanism, but
-> it is **not yet a complete functional drive.** Still missing (see Roadmap): the output support
-> bearing pocket, the motor pilot boss, the carrier↔eccentric coupling, gear tooth fillets /
-> backlash tuning, and the output shaft / arm-joint interface. The small features (Ø2.5 holes,
-> thin cam wall, module-0.5 teeth) will need a tolerance pass on your specific printer. PETG or
-> a filled nylon is recommended for the disc and cam over PLA.
+> **Status — assembles into a printable can, not yet a finished drive.** The 8 parts now sit on
+> a shared datum into an enclosed, supported actuator (motor flange ↔ output-bearing cap), with
+> module-0.75 filleted gears, steel-dowel planet idlers, and explicit running/press clearances.
+> Still to detail (see Roadmap): the motor **pilot boss**, the disc↔output-pin tolerances on your
+> printer, and a balancing second disc. Gears at module 0.75 are printable on a 12k SLA but are
+> still the first candidates to *machine/buy*. PETG or filled nylon recommended for the disc/cam.
 
 ## Manufacturing strategy: print the structure, machine the contacts
 
@@ -429,15 +430,19 @@ hardware exists. Remaining items refine transients (L/FOC) and thermal limits.
 - **Calibrate the Layer B model** with one torque-meter point (the v0 model exists and feeds
   the sim; the coefficients are still estimates). Extend it with load-dependent bearing losses.
 - Drop this actuator into the real arm MJCF as a reusable joint module.
-- Model the missing hardware: output support bearing pocket, motor pilot boss, output
-  shaft / arm-joint interface (so it's actually printable).
+- Detail the last hardware bits: motor **pilot boss**, disc↔output-pin tolerances, and the
+  output shaft / arm-joint interface.
 - Add a second cycloidal disc at 180° (or a counterweight) to balance before high rpm.
 - Sweep the total ratio: bump to **44:1** (cyclo 11 lobes) or **48:1** (cyclo 12), or shrink the
-  Ø39 housing now that clearances are visible.
-- Planetary detailing: tooth fillets, backlash/profile-shift for real print fit, and the
-  carrier↔eccentric coupling (the two stages share that part).
+  Ø40 case now that clearances are visible.
+- Planetary detailing: backlash/profile-shift on the gears for real print fit.
 
-**Done this iteration:** concentric **hybrid planetary + cycloidal (40:1)** — involute gears
+**Done this iteration:** **integrated, printable assembly** — one enclosing case (motor flange +
+stepped cavity + cyclo pockets) with a 688-supported output cap, module-0.75 filleted gears,
+steel-dowel planet idlers, merged carrier+eccentric, and a single `stack()` datum shared by the
+CAD assembly and the viewer (parts no longer interpenetrate).
+
+**Prior iteration:** concentric **hybrid planetary + cycloidal (40:1)** — involute gears
 generated (`gears.py`), two-stage η chained, total ratio flows through the whole sim, the full
 compound animates in `--view`, and the BLDC **servo-resolution** model (ratio as a position
 multiplier) is in `actuator.py`.

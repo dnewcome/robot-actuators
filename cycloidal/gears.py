@@ -16,7 +16,7 @@ from math import sqrt, acos, cos, sin, tan, pi, radians
 
 from build123d import (
     BuildPart, BuildSketch, BuildLine, Polyline, Circle, make_face, extrude,
-    Hole, Mode,
+    Hole, Mode, Pos, Cylinder,
 )
 from bd_warehouse.gear import SpurGear
 
@@ -32,14 +32,16 @@ def _invang(rho: float, rb: float) -> float:
 
 
 def spur_gear(module: float, teeth: int, thickness: float, bore: float = 0.0,
-              pressure_angle: float = 20.0):
-    """External involute spur gear (sun / planet) with an optional center bore."""
-    with BuildPart() as g:
-        SpurGear(module=module, tooth_count=teeth, thickness=thickness,
-                 pressure_angle=pressure_angle)
-        if bore > 0:
-            Hole(radius=bore / 2.0)
-    return g.part
+              pressure_angle: float = 20.0, root_fillet: float = None):
+    """External involute spur gear (sun / planet) with an optional center bore.
+    `root_fillet` rounds the tooth roots (strength + printability); defaults to 0.2·module."""
+    rf = root_fillet if root_fillet is not None else 0.2 * module
+    # Build bare (algebra mode): SpurGear inside a BuildPart mis-places along Z.
+    g = SpurGear(module=module, tooth_count=teeth, thickness=thickness,
+                 pressure_angle=pressure_angle, root_fillet=rf)   # centered: -t/2..t/2
+    if bore > 0:
+        g = g - Cylinder(radius=bore / 2.0, height=2 * thickness)
+    return Pos(0, 0, thickness / 2.0) * g     # normalize base to z=0
 
 
 def ring_gear_profile(module: float, teeth: int, pressure_angle: float = 20.0,

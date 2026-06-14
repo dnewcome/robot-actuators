@@ -13,9 +13,9 @@
   </default>
 
   <asset>
-    <mesh name="ring"      file="ring.stl"      scale="0.001 0.001 0.001"/>
-    <mesh name="disc"      file="disc.stl"      scale="0.001 0.001 0.001"/>
-    <mesh name="carrier"   file="carrier.stl"   scale="0.001 0.001 0.001"/>
+    <mesh name="housing"   file="housing.stl"        scale="0.001 0.001 0.001"/>
+    <mesh name="disc"      file="disc.stl"           scale="0.001 0.001 0.001"/>
+    <mesh name="output"    file="output_carrier.stl" scale="0.001 0.001 0.001"/>
     <material name="alu"  rgba="0.7 0.72 0.75 1"/>
     <material name="part" rgba="0.30 0.55 0.85 1"/>
     <material name="arm"  rgba="0.85 0.55 0.20 1"/>
@@ -28,14 +28,14 @@
     <!-- fixed stator: housing/ring. drive axis laid along world +Y (euler -90 about X)
          so a horizontal output arm swings under gravity in the X-Z plane. -->
     <body name="stator" pos="0 0 0.2" euler="-90 0 0">
-      <geom type="mesh" mesh="ring" material="alu"/>
+      <geom type="mesh" mesh="housing" material="alu"/>
 
       <!-- rotating output: hinge about the drive axis (local +Z == world +Y). -->
       <body name="rotor">
         <joint name="joint_out" type="hinge" axis="0 0 1" pos="0 0 0"/>
         <inertial pos="0 0 0.003" mass="0.02" diaginertia="5e-6 5e-6 8e-6"/>
-        <geom type="mesh" mesh="carrier" material="part"/>
-        <geom type="mesh" mesh="disc" material="part" pos="0.0007 0 0.001"/>
+        <geom type="mesh" mesh="output" material="part" pos="0 0 0.014"/>
+        <geom type="mesh" mesh="disc" material="part" pos="0.0007 0 0.0085"/>
 
         <!-- test arm rigidly on the output: local +X is world +X (horizontal). -->
         <body name="arm" pos="0 0 0.004">

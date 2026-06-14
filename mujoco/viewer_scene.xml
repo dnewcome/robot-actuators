@@ -1,80 +1,70 @@
 <mujoco model="hybrid_viewer">
-  <!-- Full hybrid actuator, driven KINEMATICALLY in real time by run.py --view.
-       Top group  = cycloidal output stage (ring fixed, carrier out).
-       Lower group = planetary input stage (ring fixed, sun in, 4 planets, carrier).
-       Every body turns at its TRUE ratio so the 40:1 compound is visible:
-         output 1x | cyclo carrier 10x | sun 40x | planets orbit 10x, spin -20x. -->
+  <!-- Full integrated hybrid actuator, driven KINEMATICALLY by run.py --view.
+       Translucent housing + cap show the real enclosed can; the internals animate
+       at their true ratios: output 1x | carrier 10x | sun 40x | planets orbit 10x /
+       spin -20x | disc orbits on the eccentric. Parts sit on the shared axial datum
+       (Params.stack) so nothing interpenetrates. -->
 
   <compiler meshdir="../cycloidal/out" angle="degree" autolimits="true"/>
   <option gravity="0 0 0"/>
 
   <asset>
-    <mesh name="ring"        file="ring.stl"           scale="0.001 0.001 0.001"/>
-    <mesh name="carrier"     file="carrier.stl"        scale="0.001 0.001 0.001"/>
-    <mesh name="sun"         file="sun.stl"            scale="0.001 0.001 0.001"/>
-    <mesh name="planet"      file="planet.stl"         scale="0.001 0.001 0.001"/>
-    <mesh name="planet_ring" file="planet_ring.stl"    scale="0.001 0.001 0.001"/>
-    <mesh name="pcarrier"    file="planet_carrier.stl" scale="0.001 0.001 0.001"/>
-    <material name="alu"   rgba="0.70 0.72 0.75 1"/>
+    <mesh name="housing"     file="housing.stl"           scale="0.001 0.001 0.001"/>
+    <mesh name="cap"         file="output_cap.stl"        scale="0.001 0.001 0.001"/>
+    <mesh name="planet_ring" file="planet_ring.stl"       scale="0.001 0.001 0.001"/>
+    <mesh name="sun"         file="sun.stl"               scale="0.001 0.001 0.001"/>
+    <mesh name="planet"      file="planet.stl"            scale="0.001 0.001 0.001"/>
+    <mesh name="carrier"     file="carrier_eccentric.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="disc"        file="disc.stl"              scale="0.001 0.001 0.001"/>
+    <mesh name="output"      file="output_carrier.stl"    scale="0.001 0.001 0.001"/>
+    <material name="case"  rgba="0.70 0.72 0.75 0.12"/>   <!-- translucent shell -->
     <material name="ringg" rgba="0.55 0.57 0.62 1"/>
-    <material name="out"   rgba="0.25 0.55 0.90 1"/>   <!-- output marker (slow)  -->
-    <material name="sun"   rgba="0.95 0.75 0.20 1"/>   <!-- sun (fast, input)     -->
-    <material name="plan"  rgba="0.30 0.75 0.45 1"/>   <!-- planets                -->
-    <material name="carr"  rgba="0.80 0.45 0.30 1"/>   <!-- planet carrier         -->
+    <material name="sun"   rgba="0.95 0.75 0.20 1"/>
+    <material name="plan"  rgba="0.30 0.75 0.45 1"/>
+    <material name="carr"  rgba="0.80 0.45 0.30 1"/>
+    <material name="disc"  rgba="0.40 0.60 0.90 1"/>
+    <material name="out"   rgba="0.25 0.55 0.90 1"/>
   </asset>
 
   <worldbody>
     <light pos="0.05 -0.05 0.12" dir="-0.4 0.4 -1"/>
-    <camera name="iso" pos="0.060 -0.060 0.050" xyaxes="0.7 0.7 0 -0.35 0.35 0.87"/>
+    <camera name="iso" pos="0.060 -0.060 0.055" xyaxes="0.7 0.7 0 -0.4 0.4 0.82"/>
 
-    <!-- ================= CYCLOIDAL OUTPUT STAGE (top, z=0) ================= -->
-    <body name="stator">
-      <geom type="mesh" mesh="ring" material="alu"/>
+    <!-- translucent enclosed can (context) -->
+    <geom type="mesh" mesh="housing" material="case" contype="0" conaffinity="0"/>
+    <geom type="mesh" mesh="cap" material="case" pos="0 0 0.0175" contype="0" conaffinity="0"/>
 
-      <body name="output">
-        <inertial pos="0 0 0.002" mass="0.01" diaginertia="1e-6 1e-6 1e-6"/>
-        <joint name="joint_out" type="hinge" axis="0 0 1"/>
-        <geom type="mesh" mesh="carrier" material="out"/>
-        <geom type="box" pos="0.0065 0 0.004" size="0.0065 0.0012 0.0012" material="out"/>
-      </body>
-    </body>
+    <!-- fixed planetary ring gear -->
+    <geom type="mesh" mesh="planet_ring" material="ringg" pos="0 0 0.001"/>
 
-    <!-- ================= PLANETARY INPUT STAGE (below, z=-0.014) ========== -->
-    <!-- fixed internal ring gear -->
-    <body name="planet_ring_body" pos="0 0 -0.014">
-      <geom type="mesh" mesh="planet_ring" material="ringg"/>
-    </body>
-
-    <!-- sun on the motor shaft: spins 40x the output -->
-    <body name="sun_body" pos="0 0 -0.014">
-      <inertial pos="0 0 0" mass="0.002" diaginertia="1e-7 1e-7 1e-7"/>
+    <!-- sun on the motor shaft: 40x -->
+    <body name="sun_body" pos="0 0 0.001">
       <joint name="joint_sun" type="hinge" axis="0 0 1"/>
       <geom type="mesh" mesh="sun" material="sun"/>
-      <geom type="box" pos="0.0018 0 0.0042" size="0.0018 0.0006 0.0006" material="sun"/>
     </body>
 
-    <!-- planet carrier: orbits the planets at 10x; carries 4 idler planets -->
-    <body name="planet_carrier_body" pos="0 0 -0.0165">
-      <inertial pos="0 0 0" mass="0.004" diaginertia="1e-7 1e-7 1e-7"/>
+    <!-- carrier-eccentric: planet carrier (10x); orbits planets + carries the disc -->
+    <body name="planet_carrier_body" pos="0 0 0.0055">
       <joint name="joint_pcarrier" type="hinge" axis="0 0 1"/>
-      <geom type="mesh" mesh="pcarrier" material="carr"/>
+      <geom type="mesh" mesh="carrier" material="carr"/>
 
-      <body name="planet0" pos="0.006 0 0.0025">
-        <joint name="joint_planet0" type="hinge" axis="0 0 1"/>
-        <geom type="mesh" mesh="planet" material="plan"/>
-      </body>
-      <body name="planet1" pos="0 0.006 0.0025">
-        <joint name="joint_planet1" type="hinge" axis="0 0 1"/>
-        <geom type="mesh" mesh="planet" material="plan"/>
-      </body>
-      <body name="planet2" pos="-0.006 0 0.0025">
-        <joint name="joint_planet2" type="hinge" axis="0 0 1"/>
-        <geom type="mesh" mesh="planet" material="plan"/>
-      </body>
-      <body name="planet3" pos="0 -0.006 0.0025">
-        <joint name="joint_planet3" type="hinge" axis="0 0 1"/>
-        <geom type="mesh" mesh="planet" material="plan"/>
-      </body>
+      <body name="planet0" pos="0.009 0 -0.0045"><joint name="joint_planet0" type="hinge" axis="0 0 1"/>
+        <geom type="mesh" mesh="planet" material="plan"/></body>
+      <body name="planet1" pos="0 0.009 -0.0045"><joint name="joint_planet1" type="hinge" axis="0 0 1"/>
+        <geom type="mesh" mesh="planet" material="plan"/></body>
+      <body name="planet2" pos="-0.009 0 -0.0045"><joint name="joint_planet2" type="hinge" axis="0 0 1"/>
+        <geom type="mesh" mesh="planet" material="plan"/></body>
+      <body name="planet3" pos="0 -0.009 -0.0045"><joint name="joint_planet3" type="hinge" axis="0 0 1"/>
+        <geom type="mesh" mesh="planet" material="plan"/></body>
+
+      <!-- cycloidal disc rides the eccentric journal (offset by E), orbits with the carrier -->
+      <geom type="mesh" mesh="disc" material="disc" pos="0.0007 0 0.003"/>
+    </body>
+
+    <!-- output carrier: 1x, the slow output -->
+    <body name="output_body" pos="0 0 0.014">
+      <joint name="joint_out" type="hinge" axis="0 0 1"/>
+      <geom type="mesh" mesh="output" material="out"/>
     </body>
   </worldbody>
 </mujoco>
