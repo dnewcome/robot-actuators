@@ -147,7 +147,9 @@ def main():
     model.body_mass[pid] = 0.001                  # light, so it reaches high speed quickly
     data = mujoco.MjData(model)
     mujoco.mj_forward(model, data)
-    targets, got = [0, 250, 500, 750, 1000, 1250], {}
+    # sample the curve at fractions of the (ratio-dependent) no-load speed
+    nl_rpm = spec.no_load_speed * 60 / (2 * pi)
+    targets, got = [round(f * nl_rpm) for f in (0.0, 0.25, 0.5, 0.7, 0.85, 0.95)], {}
     for _ in range(int(4.0 / model.opt.timestep)):
         rpm = data.qvel[dof] * 60 / (2 * pi)
         I = motor.current_at(data.qvel[dof] * N, 1.0)
@@ -167,29 +169,47 @@ def main():
           f"then droops to 0 at {spec.no_load_speed*60/2/pi:.0f} rpm (voltage-limited).\n")
 
     if "--view" in sys.argv:
-        view_demo(spec.ratio)
+        view_demo(Params())
 
 
-def view_demo(ratio, out_rev_per_s=0.25):
-    """Real-time, kinematically-driven look at the mechanism (no load arm).
-    Output marker turns at `out_rev_per_s`; input marker spins `ratio`x faster."""
+def view_demo(p, out_rev_per_s=0.25):
+    """Real-time, kinematically-driven look at the WHOLE hybrid (both stages).
+    Each joint is driven at its true ratio so the 40:1 compound is visible:
+      output 1x | cyclo carrier (= planet carrier) cyclo_ratio | sun total ratio |
+      planets orbit cyclo_ratio, spin (planet_abs - carrier) about their pins."""
     import time
     from mujoco import viewer as mjv
 
+    Nc = p.cyclo_ratio                      # output -> planet/cyclo carrier
+    Nt = p.ratio                            # output -> sun (total)
+    # planet absolute spin for a ring-fixed planetary (z_sun, z_planet):
+    #   w_planet = w_carrier - (z_sun/z_planet)*(w_sun - w_carrier)
+    wc = Nc                                 # carrier factor (rel. to output)
+    ws = Nt                                 # sun factor
+    w_planet_abs = wc - (p.n_sun / p.n_planet) * (ws - wc)
+    planet_rel = w_planet_abs - wc          # planet spin relative to its carrier
+
     m = mujoco.MjModel.from_xml_path(str(HERE / "viewer_scene.xml"))
     d = mujoco.MjData(m)
-    q_out = m.jnt_qposadr[m.joint("joint_out").id]
-    q_in = m.jnt_qposadr[m.joint("joint_in").id]
-    w = out_rev_per_s * 2 * pi          # output rad/s
+
+    def q(name):
+        return m.jnt_qposadr[m.joint(name).id]
+    q_out, q_sun, q_pc = q("joint_out"), q("joint_sun"), q("joint_pcarrier")
+    q_planets = [q(f"joint_planet{i}") for i in range(4)]
+
+    w = out_rev_per_s * 2 * pi              # output rad/s
     dt = 1.0 / 60.0
-    print(f"\nviewer: output {out_rev_per_s:.2f} rev/s, input {out_rev_per_s*ratio:.1f} rev/s "
-          f"({ratio:.0f}:1). Close the window to exit.")
+    print(f"\nviewer: output {out_rev_per_s:.2f} rev/s | carrier {out_rev_per_s*Nc:.1f} | "
+          f"sun {out_rev_per_s*Nt:.1f} rev/s  ({Nt:.0f}:1 total). Close the window to exit.")
     with mjv.launch_passive(m, d) as v:
         theta = 0.0
         while v.is_running():
             theta += w * dt
             d.qpos[q_out] = theta
-            d.qpos[q_in] = theta * ratio
+            d.qpos[q_pc] = theta * Nc
+            d.qpos[q_sun] = theta * Nt
+            for qp in q_planets:
+                d.qpos[qp] = theta * planet_rel
             mujoco.mj_forward(m, d)
             v.sync()
             time.sleep(dt)

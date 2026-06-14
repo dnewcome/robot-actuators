@@ -50,6 +50,26 @@ def predict(ring_contact: str, out_contact: str) -> float:
 
 
 # --------------------------------------------------------------------------- #
+# Planetary first stage — a single gear mesh, efficient because it runs at high
+# speed / low torque. Loss is per-stage (fraction), set by gear quality. Stages
+# in SERIES multiply: η_total = η_planet * η_cyclo. (This is why adding a stage
+# costs efficiency — but here the planet stage is ~0.97, a cheap price for 4x ratio
+# that keeps the cycloidal chunky.)
+# --------------------------------------------------------------------------- #
+PLANET_STAGE_LOSS = {
+    "printed":  0.06,   # printed plastic planetary, dry — ~0.94 (0.05-0.10)
+    "machined": 0.03,   # cut/MOD metal or POM gears, light grease — ~0.97 (0.02-0.04)
+}
+
+
+def planet_eta(p: Params) -> float:
+    """Efficiency of the planetary input stage (1.0 if not present)."""
+    if not getattr(p, "planetary", False):
+        return 1.0
+    return 1.0 - PLANET_STAGE_LOSS[p.planet_material]
+
+
+# --------------------------------------------------------------------------- #
 # Load-dependent efficiency (torque-based model)
 # --------------------------------------------------------------------------- #
 # A roughly constant no-load drag must be overcome before any useful output torque
@@ -88,7 +108,8 @@ def params_to_contacts(p: Params):
 
 
 def predict_params(p: Params) -> float:
-    return predict(*params_to_contacts(p))
+    """Total asymptotic efficiency = planetary stage x cycloidal stage (series)."""
+    return planet_eta(p) * predict(*params_to_contacts(p))
 
 
 # --------------------------------------------------------------------------- #
@@ -178,6 +199,11 @@ if __name__ == "__main__":
     config_table()
     bearing_sweep(p)
     load_curve(p)
+    if getattr(p, "planetary", False):
+        print(f"=== Two-stage efficiency (series) ===")
+        print(f"  planetary ({p.planet_material}) {planet_eta(p)*100:4.0f}%  x  "
+              f"cycloidal [{ring}/{out}] {predict(ring, out)*100:.0f}%  =  "
+              f"η∞_total {predict_params(p)*100:.0f}%   (total {p.ratio:.0f}:1)\n")
     print(f"current config ({p.pin_mode} pins / {p.out_mode} output) -> "
           f"contacts [{ring} / {out}] -> η∞ = {predict_params(p)*100:.0f}% "
           f"(calibration-pending)")

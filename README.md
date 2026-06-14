@@ -85,16 +85,17 @@ is closed: **Layer B predicts η → Layer A (the sim) consumes it**, all from t
 ```
 robot-actuators/
 ├── README.md
-├── .venv/                     # python env (build123d, mujoco, numpy)
+├── .venv/                     # python env (build123d, bd_warehouse, mujoco, numpy)
 ├── cycloidal/
-│   ├── drive.py               # parametric build123d generator + feasibility validator
-│   ├── efficiency.py          # Layer B v0: η per contact strategy + needle-bearing fit sweep
-│   └── out/                   # generated: disc/ring/eccentric/carrier .step + .stl, assembly.step
+│   ├── drive.py               # parametric build123d generator + feasibility validator (both stages)
+│   ├── gears.py               # involute planetary gears: spur (sun/planet) + custom internal ring
+│   ├── efficiency.py          # Layer B: two-stage η (planetary × cycloidal) + needle-bearing sweep
+│   └── out/                   # generated .step + .stl for all 8 parts + assembly.step
 └── mujoco/
-    ├── actuator.py            # MotorSpec + ActuatorSpec: motor constants × ratio → joint numbers
+    ├── actuator.py            # MotorSpec + ActuatorSpec: motor × total ratio → joint + servo numbers
     ├── testbench.xml          # Layer-A sizing scene (real meshes + load arm + payload)
     ├── run.py                 # injects physics + Layer-B η; runs sizing scenarios; --view demo
-    └── viewer_scene.xml       # minimal real-time kinematic demo (no load arm)
+    └── viewer_scene.xml       # real-time kinematic demo of the full hybrid (both stages)
 ```
 
 ---
@@ -104,7 +105,7 @@ robot-actuators/
 ```bash
 # one-time setup
 python3 -m venv .venv
-.venv/bin/pip install build123d mujoco numpy
+.venv/bin/pip install build123d bd_warehouse mujoco numpy   # bd_warehouse = involute spur gears
 
 # 1) generate CAD (edit Params in cycloidal/drive.py, then):
 .venv/bin/python cycloidal/drive.py        # prints feasibility report, writes cycloidal/out/*
@@ -128,10 +129,26 @@ python3 -m venv .venv
 
 ---
 
-## Current build: miniature cycloidal (v1)
+## Current build: concentric hybrid planetary + cycloidal (40:1)
 
-A single-stage cycloidal reduction for a small RC outrunner. Compactness is the binding
-constraint, which is why cycloidal beats the capstan here despite the efficiency tax.
+A fully **concentric compound**: the motor's high rpm goes through a **planetary first stage**,
+whose carrier drives the **cycloidal eccentric**, whose disc drives the output — all on one
+axis. Total reduction is the product of the two stages:
+
+```
+motor ─► PLANETARY 4:1 (sun in, ring fixed, carrier out) ─► cycloidal ECCENTRIC
+      ─► CYCLOIDAL 10:1 (ring fixed, carrier out) ─► output flange      = 40:1
+```
+
+**Why split the ratio** (and put the cycloidal *last*):
+- The planetary runs at high speed / low torque — the regime where gears are efficient — so a
+  small ~97% stage buys 4× ratio cheaply and keeps the cycloidal **chunky** (fat rolling pins,
+  healthy eccentricity) instead of forcing tiny high-lobe-count geometry to hit 40:1 alone.
+- The cycloidal has the **lowest backlash**, so making it the output stage puts the precision
+  where it counts; the planetary's lash divides by the cycloidal ratio when referred to output.
+
+Single-stage cycloidal is still available — set `planetary=False` (ratio falls back to the lobe
+count). Compactness is the binding constraint throughout, which is why this beats a capstan here.
 
 ### Motor — Goolsky / Surpass 2204 1400KV (measured)
 
@@ -146,11 +163,26 @@ constraint, which is why cycloidal beats the capstan here despite the efficiency
 Because the shaft exits the mount side, the gearbox bolts to the motor base and the shaft
 drives the eccentric directly — the arrangement the design assumed.
 
-### Cycloidal parameters (v1 — all feasibility checks PASS)
+### Planetary stage parameters (all feasibility checks PASS)
 
 | Param | Value | Notes |
 |---|---|---|
-| Ratio | **10:1** | single stage = lobe count; 11 ring pins, 10-lobe disc |
+| Ratio | **4.0:1** | `1 + n_ring/n_sun`; sun in, ring fixed, carrier out |
+| Teeth (sun / planet / ring) | 12 / 12 / 36 | `n_ring = n_sun + 2·n_planet`; module 0.5 mm |
+| Planets | 4 | equal-spaced: `(n_sun+n_ring) % n_planets == 0` |
+| Gear Ø (PCD) | sun Ø6 / planet Ø6 / ring Ø18 | sun bores over the 3 mm motor shaft |
+| Mesh quality | machined (~97%) | `planet_material` sets stage η (`printed` ~94%) |
+
+Geometry is generated as real involute teeth (`cycloidal/gears.py`): external `SpurGear`s for
+the sun and planets, and a custom involute **internal** ring gear (no library has one). The
+validator checks tooth-count identity, equal-spacing, planet-to-planet collision, ring-fits-
+housing, and sun-clears-shaft.
+
+### Cycloidal stage parameters (all feasibility checks PASS)
+
+| Param | Value | Notes |
+|---|---|---|
+| Ratio | **10:1** | lobe count; 11 ring pins, 10-lobe disc |
 | Pin circle / housing OD | Ø32 / Ø39 mm | gearbox is larger than the can, as expected |
 | Ring pins | 11 × Ø3 mm | steel dowels / cut rod |
 | Eccentricity (E) | 0.70 mm | profile smoothness R/(E·N) = 2.08 (ideal) |
@@ -187,15 +219,22 @@ STEP files for editing in real CAD:
 - 11 × Ø3 mm steel dowel (ring pins — **free-spinning** rollers in the default `pin_mode="rolling"`)
 - 6 × Ø2.5 mm steel dowel (output pins — pressed into the carrier in the default `out_mode="steel"`)
 - 1 × **6700** bearing (10×15×4) for the eccentric
+- **planetary gearset** — Ø6 sun + 4 × Ø6 planet + Ø18 internal ring, module 0.5 (machined/MOD
+  gears for η, or SLA-printed for a prototype); 4 × planet idler pins on the carrier
 - M3 screws for the motor cross-mount (16 mm + 19 mm pairs)
 - the Goolsky 2204 motor
 
-> **Status — printable geometry, not a finished gearbox.** v1 is a *kinematic / fit*
-> prototype: the four parts print and assemble to demonstrate the 10:1 mechanism, but it is
-> **not yet a complete functional drive.** Still missing (see Roadmap): the output support
-> bearing pocket, the motor pilot boss, and the output shaft / arm-joint interface. The
-> small features (Ø2.5 holes, thin cam wall) will need a tolerance pass on your specific
-> printer. PETG or a filled nylon is recommended for the disc and cam over PLA.
+> The planetary gears (`sun.stl`, `planet.stl`, `planet_ring.stl`, `planet_carrier.stl`) are
+> generated alongside the cycloidal parts. At module 0.5 they print on a 12k SLA but are the
+> first candidates to *machine/buy* — small-module teeth are where print tolerance bites.
+
+> **Status — printable geometry, not a finished gearbox.** This is a *kinematic / fit*
+> prototype: the eight parts print and assemble to demonstrate the 40:1 hybrid mechanism, but
+> it is **not yet a complete functional drive.** Still missing (see Roadmap): the output support
+> bearing pocket, the motor pilot boss, the carrier↔eccentric coupling, gear tooth fillets /
+> backlash tuning, and the output shaft / arm-joint interface. The small features (Ø2.5 holes,
+> thin cam wall, module-0.5 teeth) will need a tolerance pass on your specific printer. PETG or
+> a filled nylon is recommended for the disc and cam over PLA.
 
 ## Manufacturing strategy: print the structure, machine the contacts
 
@@ -285,22 +324,42 @@ cycloidal/drive.py  ──(ratio)──►  mujoco/actuator.py  ──►  mujoc
                                         viewer_scene.xml
 ```
 
-The ratio is pulled straight out of `drive.py` into `actuator.py`, and `run.py` injects the
-derived armature / gear / friction onto the MuJoCo model at load time. **Change a `Param`,
-re-run, and the geometry and the sim move together** — they can't drift apart.
+The **total ratio** (`planet_ratio × cyclo_ratio`) is pulled straight out of `drive.py` into
+`actuator.py`, and `run.py` injects the derived armature / gear / friction onto the MuJoCo model
+at load time. **Change a `Param`, re-run, and the geometry and the sim move together** — they
+can't drift apart. `p.ratio` is the single number the whole sim sees, so going hybrid changed
+nothing downstream except the value.
 
 `actuator.py` turns motor constants × ratio into joint-level numbers:
 `Kt = 60/(2π·KV)`, `peak τ = η∞·Kt·I·N − drag`, `no-load ω = KV·V/N`, `reflected J = J_rotor·N²`,
-and the back-EMF current limit `I = (throttle·V − Ke·ω)/R`. η∞ and `drag` come from
-`efficiency.py` (Layer B), so the whole chain is one source of truth.
+and the back-EMF current limit `I = (throttle·V − Ke·ω)/R`. η∞ now chains both stages
+(`η_planet × η_cyclo`) and `drag` refers through the full ratio — both from `efficiency.py`
+(Layer B), so the whole chain is one source of truth.
+
+### Positioning / servo resolution (BLDC "step counts")
+
+A BLDC has no native steps like a stepper — but **the reduction multiplies whatever the rotor
+resolves**, which is the lever for servo accuracy. For the 14-pole motor (7 pole-pairs) at 40:1:
+
+| Rotor sensing | counts / motor rev | × 40 → output | output resolution | holds at standstill? |
+|---|---|---|---|---|
+| Hall / back-EMF 6-step | 6 × 7 = 42 | 1,680 | **0.214°** | Halls yes; back-EMF **no** |
+| magnetic encoder 14-bit | 16,384 | 655,360 | ~0.001° | yes (FOC) |
+
+Output **backlash ~0.08°** (planet lash ÷ cyclo ratio + tiny cyclo lash) sits below the Hall
+resolution, so 0.214° is usable, not swamped by slop — that's *why* the cycloidal is last.
+**Back-EMF amplitude ∝ speed**, so it gives commutation + velocity for efficient cruising but
+**cannot hold position at rest**; pair it with Halls (cheap 0.214°) or an encoder (precise) for
+the holding loop. `actuator.py`'s `servo_report()` prints this table for the current Params.
 
 ### Torque-based (load-dependent) efficiency
 
 Efficiency isn't a flat number — a roughly constant **no-load drag** must be overcome before
 useful torque appears, so η rises from 0 toward η∞ as load grows. This is realized in the sim
-for free: **gear carries η∞ (0.86), joint frictionloss carries the drag (20 mN·m)**, which
-reproduces `η(T) = η∞·T/(T+drag)`. The *operating* efficiency therefore tops out ~84% at peak
-torque (peak load ≠ infinite load), not 86%.
+for free: **gear carries η∞ (0.83), joint frictionloss carries the drag (80 mN·m at output)**,
+which reproduces `η(T) = η∞·T/(T+drag)`. The *operating* efficiency therefore tops out ~81% at
+peak torque (peak load ≠ infinite load), not 83%. η∞ is itself the two-stage product
+(planetary 0.97 × cyclo 0.86).
 
 ### Back-EMF and the torque-speed curve
 
@@ -308,42 +367,45 @@ The motor is now driven by **throttle (voltage)**, not raw current. At speed it 
 back-EMF (`Ke = Kt`), so the available current is `I = (throttle·V − Ke·ω) / R`, clamped to
 the 13 A rating. That yields the real two-regime envelope:
 
-- **current-limited** (flat ~0.74 N·m) below the corner speed (~995 rpm out), where the rating
+- **current-limited** (flat ~2.87 N·m) below the corner speed (~249 rpm out), where the rating
   caps the current;
-- **voltage-limited** above it, torque drooping linearly to **zero at the 1554 rpm no-load
+- **voltage-limited** above it, torque drooping linearly to **zero at the 388 rpm no-load
   speed** as back-EMF eats the headroom.
 
 No more freewheeling: a free spin settles at no-load speed instead of accelerating forever.
 
 ---
 
-## Simulation results (v1, load-dependent η, η∞ = 0.86)
+## Simulation results (hybrid 40:1, load-dependent η, η∞ = 0.83)
 
 ```
-η∞ (high-load) .... 86%        no-load drag 20 mN·m (output)
-PEAK torque ....... 0.74 N·m   (@ 13 A burst, net of drag)
-cont. torque ~..... 0.23 N·m   (thermal-limited estimate)
-no-load out speed . 1554 rpm
-reflected inertia . 1.5e-4 kg·m²
-max static payload  ~500 g @ 150 mm (peak) / ~155 g (continuous)
+total ratio ....... 40:1       (planetary 4.0 × cycloidal 10)
+η∞ (high-load) .... 83%        (planetary 0.97 × cyclo 0.86); no-load drag 80 mN·m (output)
+PEAK torque ....... 2.87 N·m   (@ 13 A burst, net of drag)
+cont. torque ~..... 0.89 N·m   (thermal-limited estimate)
+no-load out speed . 388 rpm
+reflected inertia . 24e-4 kg·m²   (scales with ratio²)
+max static payload  ~1.95 kg @ 150 mm (peak) / ~0.61 kg (continuous)
+output resolution . 0.214° (Hall × 40)   backlash ~0.08°
 ```
 
-**Scenario A — free accel:** output reaches ~14 rad/s in 50 ms; simulated effective
-inertia (25.7e-4) **matches the hand calc** of arm+payload+armature → the model is
+**Scenario A — free accel:** output reaches ~30 rad/s in 50 ms; simulated effective
+inertia (46.8e-4) **matches the hand calc** of arm+payload+armature → the model is
 trustworthy.
-**Scenario B — lift 100 g @ 150 mm:** needs 0.16 of 0.74 N·m available → lifts easily.
+**Scenario B — lift 100 g @ 150 mm:** needs 0.16 of 2.87 N·m available → lifts easily.
 **Scenario C — unpowered hold:** backdrives under load → **backdrivable**, the desired
 property for a compliant, safe arm.
-**Scenario D — efficiency vs load (measured in sim):** η climbs 61% → 71% → 78% → 82% as
+**Scenario D — efficiency vs load (measured in sim):** η climbs 32% → 46% → 59% → 69% as
 output torque rises 0.05 → 0.40 N·m, and the **measured η matches the model** — the load
 curve emerges from the gear+frictionloss physics, not a typed-in constant.
 **Scenario E — torque-speed curve (traced in a sim spin-up):** under full throttle the
-delivered torque holds ~0.74 N·m to ~995 rpm, then droops (0.39 N·m @ 1250 rpm) toward zero at
-1554 rpm — the back-EMF envelope, measured as the output accelerates.
+delivered torque holds ~2.87 N·m to ~249 rpm, then droops toward zero at 388 rpm — the
+back-EMF envelope, measured as the output accelerates (sample points scale with no-load speed).
 
-The `--view` demo is a separate real-time kinematic scene: the **output marker** turns at
-0.25 rev/s and the **input marker** spins 10× faster, so the reduction is visible at a
-glance — no distracting load arm.
+The `--view` demo is a real-time kinematic scene of the **whole hybrid**: the cycloidal
+**output** turns at 0.25 rev/s, the **planet carrier** at 10×, the **gold sun** at 40×, and the
+**4 green planets** orbit (10×) while spinning on their pins (−20×) — the full 40:1 chain visible
+at a glance.
 
 ---
 
@@ -370,7 +432,15 @@ hardware exists. Remaining items refine transients (L/FOC) and thermal limits.
 - Model the missing hardware: output support bearing pocket, motor pilot boss, output
   shaft / arm-joint interface (so it's actually printable).
 - Add a second cycloidal disc at 180° (or a counterweight) to balance before high rpm.
-- Sweep the design: push toward 12:1, or shrink the Ø39 housing now that clearances are visible.
+- Sweep the total ratio: bump to **44:1** (cyclo 11 lobes) or **48:1** (cyclo 12), or shrink the
+  Ø39 housing now that clearances are visible.
+- Planetary detailing: tooth fillets, backlash/profile-shift for real print fit, and the
+  carrier↔eccentric coupling (the two stages share that part).
+
+**Done this iteration:** concentric **hybrid planetary + cycloidal (40:1)** — involute gears
+generated (`gears.py`), two-stage η chained, total ratio flows through the whole sim, the full
+compound animates in `--view`, and the BLDC **servo-resolution** model (ratio as a position
+multiplier) is in `actuator.py`.
 
 ---
 

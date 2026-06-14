@@ -26,6 +26,7 @@ class MotorSpec:
     resistance: float = 0.307   # ohm
     voltage: float = 11.1       # 3S nominal; range 7-15 V
     rotor_inertia: float = 1.5e-6   # kg·m²  (estimate: ~12 g bell at ~11 mm eff. radius)
+    pole_pairs: int = 7         # 14-pole outrunner -> 7 pole-pairs (sets Hall/back-EMF resolution)
 
     @property
     def kt(self) -> float:
@@ -36,6 +37,12 @@ class MotorSpec:
     def ke(self) -> float:
         """Back-EMF constant, V·s/rad. In SI, Ke == Kt."""
         return self.kt
+
+    @property
+    def hall_counts(self) -> int:
+        """Commutation states per MECHANICAL rev = 6 (electrical steps) x pole_pairs.
+        This is the native resolution of both Hall sensing and back-EMF zero-crossings."""
+        return 6 * self.pole_pairs
 
     @property
     def no_load_speed(self) -> float:
@@ -73,6 +80,7 @@ class ActuatorSpec:
     no_load_speed: float        # rad/s at the output
     reflected_inertia: float    # kg·m²  (armature seen at the joint)
     torque_per_amp: float       # N·m/A at the joint  (== gear for a MuJoCo motor, uses eta_inf)
+    output_lash_deg: float      # backlash referred to the output (sets repeatability/deadband)
 
     def eta_at(self, T_out: float) -> float:
         """Load-dependent efficiency at output torque T_out (the curve the sim realizes)."""
@@ -103,7 +111,33 @@ class ActuatorSpec:
             no_load_speed=motor.no_load_speed / N,
             reflected_inertia=motor.rotor_inertia * N * N,
             torque_per_amp=tpa,
+            output_lash_deg=p.output_lash_deg,
         )
+
+    def output_resolution_deg(self, counts_per_motor_rev: float) -> float:
+        """Output angular resolution: rotor sensor counts MULTIPLIED by the ratio.
+        The reduction is a resolution amplifier — this is the servo-accuracy win."""
+        return 360.0 / (counts_per_motor_rev * self.ratio)
+
+    def servo_report(self, motor: "MotorSpec"):
+        """Positional resolution + backlash — 'how do I get step counts out of a BLDC'."""
+        print("\n=== Positioning / servo resolution (ratio as a resolution multiplier) ===")
+        print(f"  total ratio {self.ratio:.0f}:1  ->  whatever the rotor resolves, the output resolves {self.ratio:.0f}x finer")
+        print(f"  {'rotor sensing':28s} {'counts/mrev':>11s} {'out counts/rev':>15s} {'out res':>9s}")
+        options = [
+            (f"Hall / back-EMF 6-step", motor.hall_counts, "works @ 0 speed (Hall); BEMF only while moving"),
+            ("magnetic enc 12-bit", 4096, "AS5600-class, absolute"),
+            ("magnetic enc 14-bit", 16384, "AS5047/48-class, for FOC"),
+        ]
+        for name, cpr, note in options:
+            out_cpr = cpr * self.ratio
+            res = self.output_resolution_deg(cpr)
+            print(f"  {name:28s} {cpr:11d} {out_cpr:15.0f} {res:8.3f}°   {note}")
+        print(f"  backlash (lost motion) at output ~ {self.output_lash_deg:.3f}°  "
+              f"-> repeatability floor / servo deadband")
+        print("  NOTE: back-EMF amplitude ∝ speed, so it gives commutation + velocity, not a")
+        print("        standstill hold. Use Halls (or an encoder) for position at rest;")
+        print("        cycloidal-last keeps backlash tiny so the resolution is usable.\n")
 
     def report(self, motor: MotorSpec):
         rpm = self.no_load_speed * 60 / (2 * pi)
@@ -132,6 +166,7 @@ class ActuatorSpec:
             print(f"max static payload @ {L*1000:.0f} mm = {self.peak_torque/(9.81*L)*1000:.0f} g (peak) / "
                   f"{self.cont_torque/(9.81*L)*1000:.0f} g (cont.)")
         print()
+        self.servo_report(motor)
 
 
 if __name__ == "__main__":
