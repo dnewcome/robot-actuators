@@ -169,14 +169,27 @@ def main():
           f"then droops to 0 at {spec.no_load_speed*60/2/pi:.0f} rpm (voltage-limited).\n")
 
     if "--view" in sys.argv:
-        view_demo(Params())
+        # optional initial output speed: `--view 0.05` or `--speed 0.05`
+        rev = 0.10
+        for flag in ("--view", "--speed"):
+            if flag in sys.argv:
+                i = sys.argv.index(flag)
+                if i + 1 < len(sys.argv):
+                    try:
+                        rev = float(sys.argv[i + 1])
+                    except ValueError:
+                        pass
+        view_demo(Params(), out_rev_per_s=rev)
 
 
-def view_demo(p, out_rev_per_s=0.25):
+def view_demo(p, out_rev_per_s=0.10):
     """Real-time, kinematically-driven look at the WHOLE hybrid (both stages).
     Each joint is driven at its true ratio so the 40:1 compound is visible:
       output 1x | cyclo carrier (= planet carrier) cyclo_ratio | sun total ratio |
-      planets orbit cyclo_ratio, spin (planet_abs - carrier) about their pins."""
+      planets orbit cyclo_ratio, spin (planet_abs - carrier) about their pins.
+
+    Speed is live-adjustable: ↑/↓ scale it, SPACE pauses, R resets. The starting
+    output speed comes from `out_rev_per_s` (CLI: `--view 0.05`)."""
     import time
     from mujoco import viewer as mjv
 
@@ -197,14 +210,32 @@ def view_demo(p, out_rev_per_s=0.25):
     q_out, q_sun, q_pc = q("joint_out"), q("joint_sun"), q("joint_pcarrier")
     q_planets = [q(f"joint_planet{i}") for i in range(4)]
 
-    w = out_rev_per_s * 2 * pi              # output rad/s
+    # live speed control via keyboard (GLFW keycodes); mutable so the callback can edit it
+    KEY_UP, KEY_DOWN, KEY_SPACE, KEY_R = 265, 264, 32, 82
+    sc = {"mult": 1.0, "paused": False}
+
+    def on_key(keycode):
+        if keycode == KEY_UP:
+            sc["mult"] *= 1.5
+        elif keycode == KEY_DOWN:
+            sc["mult"] /= 1.5
+        elif keycode == KEY_SPACE:
+            sc["paused"] = not sc["paused"]
+        elif keycode == KEY_R:
+            sc["mult"] = 1.0
+        eff = out_rev_per_s * sc["mult"]
+        print(f"  speed: output {eff:.3f} rev/s  (sun {eff*Nt:.2f} rev/s)"
+              f"{'  [PAUSED]' if sc['paused'] else ''}")
+
     dt = 1.0 / 60.0
     print(f"\nviewer: output {out_rev_per_s:.2f} rev/s | carrier {out_rev_per_s*Nc:.1f} | "
-          f"sun {out_rev_per_s*Nt:.1f} rev/s  ({Nt:.0f}:1 total). Close the window to exit.")
-    with mjv.launch_passive(m, d) as v:
+          f"sun {out_rev_per_s*Nt:.1f} rev/s  ({Nt:.0f}:1 total).")
+    print("  controls: ↑/↓ faster/slower · SPACE pause · R reset · close window to exit")
+    with mjv.launch_passive(m, d, key_callback=on_key) as v:
         theta = 0.0
         while v.is_running():
-            theta += w * dt
+            if not sc["paused"]:
+                theta += out_rev_per_s * sc["mult"] * 2 * pi * dt
             d.qpos[q_out] = theta
             d.qpos[q_pc] = theta * Nc
             d.qpos[q_sun] = theta * Nt

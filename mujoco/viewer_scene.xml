@@ -17,13 +17,14 @@
     <mesh name="carrier"     file="carrier_eccentric.stl" scale="0.001 0.001 0.001"/>
     <mesh name="disc"        file="disc.stl"              scale="0.001 0.001 0.001"/>
     <mesh name="output"      file="output_carrier.stl"    scale="0.001 0.001 0.001"/>
-    <material name="case"  rgba="0.70 0.72 0.75 0.12"/>   <!-- translucent shell -->
+    <material name="case"  rgba="0.70 0.72 0.75 0.10"/>   <!-- translucent shell      -->
     <material name="ringg" rgba="0.55 0.57 0.62 1"/>
-    <material name="sun"   rgba="0.95 0.75 0.20 1"/>
-    <material name="plan"  rgba="0.30 0.75 0.45 1"/>
-    <material name="carr"  rgba="0.80 0.45 0.30 1"/>
-    <material name="disc"  rgba="0.40 0.60 0.90 1"/>
-    <material name="out"   rgba="0.25 0.55 0.90 1"/>
+    <material name="sun"   rgba="0.95 0.72 0.10 1"/>      <!-- input: bright, opaque   -->
+    <material name="plan"  rgba="0.20 0.80 0.40 1"/>
+    <material name="carr"  rgba="0.80 0.45 0.30 0.35"/>   <!-- translucent: see the sun -->
+    <material name="disc"  rgba="0.40 0.60 0.90 0.35"/>   <!-- translucent              -->
+    <material name="out"   rgba="0.25 0.55 0.90 0.55"/>
+    <material name="mark"  rgba="0.90 0.10 0.10 1"/>      <!-- rotation index markers   -->
   </asset>
 
   <worldbody>
@@ -37,16 +38,19 @@
     <!-- fixed planetary ring gear -->
     <geom type="mesh" mesh="planet_ring" material="ringg" pos="0 0 0.001"/>
 
-    <!-- sun on the motor shaft: 40x -->
+    <!-- sun on the motor shaft: 40x (the input). Bright + a radial marker so the
+         fast spin reads through the translucent carrier/disc stacked above it. -->
     <body name="sun_body" pos="0 0 0.001">
       <joint name="joint_sun" type="hinge" axis="0 0 1"/>
       <geom type="mesh" mesh="sun" material="sun"/>
+      <geom type="box" pos="0.0036 0 0.0021" size="0.0036 0.0010 0.0010" material="mark"/>
     </body>
 
     <!-- carrier-eccentric: planet carrier (10x); orbits planets + carries the disc -->
     <body name="planet_carrier_body" pos="0 0 0.0055">
       <joint name="joint_pcarrier" type="hinge" axis="0 0 1"/>
       <geom type="mesh" mesh="carrier" material="carr"/>
+      <geom type="box" pos="0.012 0 0.0024" size="0.003 0.001 0.001" material="carr"/>
 
       <body name="planet0" pos="0.009 0 -0.0045"><joint name="joint_planet0" type="hinge" axis="0 0 1"/>
         <geom type="mesh" mesh="planet" material="plan"/></body>
@@ -65,6 +69,7 @@
     <body name="output_body" pos="0 0 0.014">
       <joint name="joint_out" type="hinge" axis="0 0 1"/>
       <geom type="mesh" mesh="output" material="out"/>
+      <geom type="box" pos="0.010 0 0.0035" size="0.003 0.0011 0.0011" material="mark"/>
     </body>
   </worldbody>
 </mujoco>
