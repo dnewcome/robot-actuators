@@ -10,7 +10,6 @@
 
   <asset>
     <mesh name="housing" file="housing.stl" scale="0.001 0.001 0.001"/>
-    <mesh name="ring"    file="ring.stl"    scale="0.001 0.001 0.001"/>
     <mesh name="sun"     file="sun.stl"     scale="0.001 0.001 0.001"/>
     <mesh name="planet"  file="planet.stl"  scale="0.001 0.001 0.001"/>
     <mesh name="carrier" file="carrier.stl" scale="0.001 0.001 0.001"/>
@@ -27,19 +26,16 @@
     <light pos="0.05 -0.05 0.12" dir="-0.4 0.4 -1"/>
     <camera name="iso" pos="0.055 -0.055 0.050" xyaxes="0.7 0.7 0 -0.4 0.4 0.82"/>
 
-    <!-- fixed shell: housing (motor mount + ring seat) + translucent cap -->
+    <!-- fixed shell: housing (motor mount + BUILT-IN ring gear) + translucent cap -->
     <geom type="mesh" mesh="housing" material="case" contype="0" conaffinity="0"/>
     <geom type="mesh" mesh="cap" material="case" pos="0 0 0.012" contype="0" conaffinity="0"/>
 
-    <!-- fixed internal ring gear (pressed into the housing) -->
-    <geom type="mesh" mesh="ring" material="ring" pos="0 0 0.004" contype="0" conaffinity="0"/>
-
-    <!-- sun on the motor shaft: 4x, the INPUT. Bright + a radial marker so the fast
-         spin reads through the translucent carrier stacked above it. -->
-    <body name="sun_body" pos="0 0 0.004">
+    <!-- sun on the motor shaft: 4x, the INPUT (gear + press collar below it). Bright +
+         a radial marker on the gear so the fast spin reads through the translucent carrier. -->
+    <body name="sun_body" pos="0 0 0.001">
       <joint name="joint_sun" type="hinge" axis="0 0 1"/>
       <geom type="mesh" mesh="sun" material="sun" contype="0" conaffinity="0"/>
-      <geom type="box" pos="0.0033 0 0.002" size="0.0033 0.0009 0.0009" material="mark"
+      <geom type="box" pos="0.0033 0 0.006" size="0.0033 0.0009 0.0009" material="mark"
             contype="0" conaffinity="0"/>
     </body>
 
@@ -51,13 +47,13 @@
             contype="0" conaffinity="0"/>
 
       <!-- planets ride the carrier (orbit 1x) and spin -3x about their pins -->
-      <body name="planet0" pos="0.009 0 -0.0045"><joint name="joint_planet0" type="hinge" axis="0 0 1"/>
+      <body name="planet0" pos="0.0108 0 -0.0045"><joint name="joint_planet0" type="hinge" axis="0 0 1"/>
         <geom type="mesh" mesh="planet" material="plan" contype="0" conaffinity="0"/></body>
-      <body name="planet1" pos="0 0.009 -0.0045"><joint name="joint_planet1" type="hinge" axis="0 0 1"/>
+      <body name="planet1" pos="0 0.0108 -0.0045"><joint name="joint_planet1" type="hinge" axis="0 0 1"/>
         <geom type="mesh" mesh="planet" material="plan" contype="0" conaffinity="0"/></body>
-      <body name="planet2" pos="-0.009 0 -0.0045"><joint name="joint_planet2" type="hinge" axis="0 0 1"/>
+      <body name="planet2" pos="-0.0108 0 -0.0045"><joint name="joint_planet2" type="hinge" axis="0 0 1"/>
         <geom type="mesh" mesh="planet" material="plan" contype="0" conaffinity="0"/></body>
-      <body name="planet3" pos="0 -0.009 -0.0045"><joint name="joint_planet3" type="hinge" axis="0 0 1"/>
+      <body name="planet3" pos="0 -0.0108 -0.0045"><joint name="joint_planet3" type="hinge" axis="0 0 1"/>
         <geom type="mesh" mesh="planet" material="plan" contype="0" conaffinity="0"/></body>
     </body>
   </worldbody>
