@@ -1,0 +1,64 @@
+<mujoco model="planetary_inverted_viewer">
+  <!-- Inverted single-stage planetary (ring fixed, carrier OUT), driven KINEMATICALLY
+       by sim.py. Translucent housing + cap show the enclosed stack; internals animate
+       at their true ratios:
+         sun (input)  : spins ratio x (the fast NEMA-17 stepper input)
+         planets      : orbit 1x with the carrier AND spin about their rollers
+         carrier      : 1x slow OUTPUT (both plates + the Ø5 output shaft co-rotate),
+                        SAME rotational sense as the sun
+       Parts sit on drive.py's axial datum (z=0 at the stepper face). mm -> m via scale. -->
+
+  <compiler meshdir="out" angle="degree" autolimits="true"/>
+  <option gravity="0 0 0"/>
+
+  <asset>
+    <mesh name="housing"        file="housing.stl"        scale="0.001 0.001 0.001"/>
+    <mesh name="sun"            file="sun.stl"            scale="0.001 0.001 0.001"/>
+    <mesh name="planet"         file="planet.stl"         scale="0.001 0.001 0.001"/>
+    <mesh name="carrier_bottom" file="carrier_bottom.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="carrier_top"    file="carrier_top.stl"    scale="0.001 0.001 0.001"/>
+    <mesh name="cap"            file="cap.stl"            scale="0.001 0.001 0.001"/>
+    <material name="case" rgba="0.70 0.72 0.75 0.12"/>
+    <material name="sun"  rgba="0.95 0.72 0.10 1"/>
+    <material name="plan" rgba="0.20 0.80 0.40 1"/>
+    <material name="carr" rgba="0.20 0.50 0.92 0.55"/>
+    <material name="mark" rgba="0.90 0.10 0.10 1"/>
+  </asset>
+
+  <worldbody>
+    <light pos="0.05 -0.05 0.13" dir="-0.4 0.4 -1"/>
+    <camera name="iso" pos="0.065 -0.065 0.065" xyaxes="0.7 0.7 0 -0.4 0.4 0.82"/>
+
+    <!-- fixed shell (housing + ring + end cap) -->
+    <geom type="mesh" mesh="housing" material="case" contype="0" conaffinity="0"/>
+    <geom type="mesh" mesh="cap" pos="0 0 0.0245" material="case" contype="0" conaffinity="0"/>
+
+    <!-- sun input: spins ratio x about the main axis -->
+    <body name="sun_body" pos="0 0 0.004">
+      <joint name="joint_sun" type="hinge" axis="0 0 1"/>
+      <geom type="mesh" mesh="sun" material="sun" contype="0" conaffinity="0"/>
+    </body>
+
+    <!-- output carrier cage: 1x slow output; plates, planets and the shaft co-rotate -->
+    <body name="carrier_body" pos="0 0 0">
+      <joint name="joint_out" type="hinge" axis="0 0 1"/>
+      <geom type="mesh" mesh="carrier_bottom" material="carr" pos="0 0 0.0085" contype="0" conaffinity="0"/>
+      <geom type="mesh" mesh="carrier_top"    material="carr" pos="0 0 0.0215" contype="0" conaffinity="0"/>
+      <geom type="box" pos="0.011 0 0.030" size="0.004 0.0012 0.0012" material="mark" contype="0" conaffinity="0"/>
+
+      <!-- 3 planets ride their rollers on the carrier (gear plane z = gear_z = 0.0115) -->
+      <body name="planet0_body" pos="0.010155 0 0.0115">
+        <joint name="joint_planet0" type="hinge" axis="0 0 1"/>
+        <geom type="mesh" mesh="planet" material="plan" contype="0" conaffinity="0"/>
+      </body>
+      <body name="planet1_body" pos="-0.0050775 0.0087911 0.0115">
+        <joint name="joint_planet1" type="hinge" axis="0 0 1"/>
+        <geom type="mesh" mesh="planet" material="plan" contype="0" conaffinity="0"/>
+      </body>
+      <body name="planet2_body" pos="-0.0050775 -0.0087911 0.0115">
+        <joint name="joint_planet2" type="hinge" axis="0 0 1"/>
+        <geom type="mesh" mesh="planet" material="plan" contype="0" conaffinity="0"/>
+      </body>
+    </body>
+  </worldbody>
+</mujoco>
