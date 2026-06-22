@@ -58,12 +58,12 @@ class InvParams:
     n_planet: int = 18
     n_planets: int = 3              # vendor uses 3; (n_sun+n_ring)%n_planets==0 -> 60%3=0
     gear_module: float = 0.677      # backed out of the vendor STEP (tip & ring-tip dia)
-    gear_thickness: float = 9.5     # face width; the Ø5x10 roller sets a ~0.5 mm taller gap
+    gear_thickness: float = 6.0     # face width; trimmed so the case stack fits M3x20 hardware
     stage_eta: float = 0.94         # single printed planetary stage
 
     # --- Planet axles: Ø5 alu rollers (M3x5x10 kit part), clamp the 2-plate cage --
     roller_dia: float = 5.0         # roller OD the planet rotates on
-    roller_len: float = 10.0        # sets the plate gap (gear_thickness + axial play)
+    roller_len: float = 6.5         # sets the plate gap (gear_thickness + axial play); cut from Ø5 stock
     planet_bore_clear: float = 0.20 # planet bore radial clearance over the roller
     cage_screw_dia: float = 3.0     # M3 down the roller, threads into the top hub
     cage_screw_pilot: float = 2.5   # tap / heat-set pilot in the top hub
@@ -114,7 +114,7 @@ class InvParams:
 
     # --- Shell / fits ----------------------------------------------------------
     case_wall: float = 1.5          # radial wall outside the ring (-> Ø42-ish like vendor)
-    flange_t: float = 8.0           # stepper-mount flange (pockets the 7x13 + pilot)
+    flange_t: float = 7.0           # base plate thickness (pockets the 7x13 + pilot)
     cap_t: float = 3.0              # cap roof above the 30x37
     carrier_bot_t: float = 3.0      # input-side carrier plate
     carrier_top_t: float = 3.0      # output-side plate (below the hub)
@@ -127,6 +127,7 @@ class InvParams:
     case_bolt_dia: float = 3.0      # M3 through-bolt, base -> body -> cap nut
     case_bolt_head_dia: float = 5.5
     case_bolt_head_h: float = 2.8   # button-head counterbore in the base underside
+    case_bolt_len: float = 20.0     # off-the-shelf through-bolt length (under head) to target
     n_case_bolts: int = 4
 
     output_lash_deg: float = 0.25
@@ -375,6 +376,12 @@ def validate(p: InvParams) -> bool:
     check("through-bolts inside the body wall",
           p.case_bolt_r + p.case_bolt_dia / 2 + 0.5 <= p.case_od / 2,
           f"bolt outer R {p.case_bolt_r + p.case_bolt_dia/2:.2f} vs body R {p.case_od/2:.1f}")
+    # a stock M3xcase_bolt_len through-bolt must reach the cap nut and not bottom on the roof
+    tip = p.case_bolt_head_h + p.case_bolt_len            # bolt tip z (head seats at the counterbore)
+    check(f"M3x{p.case_bolt_len:.0f} through-bolt engages the cap nut",
+          p.housing_h <= tip <= p.housing_h + p.cage_nut_thk + 2.0,
+          f"tip z {tip:.1f} in nut span [{p.housing_h:.1f}..{p.housing_h + p.cage_nut_thk:.1f}] "
+          f"(engages {tip - p.housing_h:.1f} mm)")
     check("cap bolts land on the square plate",
           p.case_bolt_r + p.case_bolt_head_dia / 2 + 0.5 <= p.out_plate / 2,
           f"bolt edge {p.case_bolt_r + p.case_bolt_head_dia/2:.1f} vs plate half {p.out_plate/2:.1f}")
@@ -672,8 +679,8 @@ def report(p: InvParams):
     print(f"torque ............ ~{hold*1000:.0f} mN·m stepper -> ~{out_torque*1000:.0f} mN·m output "
           f"(η {p.stage_eta:.0%})")
     print(f"backlash .......... ~{p.output_lash_deg:.2f}° at output (single stage)")
-    print(f"case .............. 3 parts (base + body + cap) clamped by {p.n_case_bolts}x M{p.case_bolt_dia:.0f} "
-          f"through-bolts into captive nuts; body OD Ø{p.case_od:.1f} = NEMA plate width")
+    print(f"case .............. 3 parts (base + body + cap) clamped by {p.n_case_bolts}x M{p.case_bolt_dia:.0f}x"
+          f"{p.case_bolt_len:.0f} through-bolts into captive nuts; body OD Ø{p.case_od:.1f} = NEMA plate width")
     print(f"input ............. SEPARATE NEMA-17 base ({p.out_plate:.0f}mm sq, 31mm M3) + Ø{p.motor_shaft_dia:.0f} "
           f"press-fit sun ({p.shaft_press_fit*1000:.0f} µm); motor + 7x13 fit before the body goes on")
     print(f"output ............ NEMA-17 face + Ø{p.out_shaft_dia:.0f} shaft ({p.out_shaft_protrude:.0f}mm out) "
@@ -682,7 +689,7 @@ def report(p: InvParams):
           f"clears the housing {p.carrier_face_clear:.2f}mm -> bearing takes the load")
     print(f"cage fastening .... {p.n_planets + p.n_cage_posts}x M{p.cage_screw_dia:.0f} into CAPTIVE nuts "
           f"in carrier_top (no printed threads)")
-    print(f"carrier ........... 2-plate cage: {p.n_planets} planets on Ø{p.roller_dia:.0f}x{p.roller_len:.0f} rollers "
+    print(f"carrier ........... 2-plate cage: {p.n_planets} planets on Ø{p.roller_dia:.0f}x{p.roller_len:.1f} rollers "
           f"+ {p.n_cage_posts} INTEGRAL standoff posts between them, all M{p.cage_screw_dia:.0f} clamped")
     print(f"bearings .......... input 7x13x4 (sun) + output 30x37x4 (carrier hub)")
     print(f"envelope .......... Ø{p.case_od:.1f} tube, {p.housing_h:.1f}mm body (vendor-matched)")
