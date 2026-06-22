@@ -60,18 +60,31 @@ class ReducerParams:
     gear_thickness: float = 4.0     # face width
     stage_eta: float = 0.97         # single-stage mesh efficiency (machined ~0.97 / printed ~0.94)
 
-    # --- Planet axles ----------------------------------------------------------
-    planet_pin_dia: float = 1.5     # Ø1.5 steel dowel pressed into the carrier
-    planet_bore_clear: float = 0.12 # planet bore radial clearance over its dowel (spins)
+    # --- Planet axles (two-plate cage: planets BOLTED between the plates) -------
+    # The carrier is now TWO plates. Each planet rides an integral journal boss on
+    # the bottom plate; an M2.5 screw runs down the boss center and threads into the
+    # bottom plate, clamping the top plate onto the boss top. So the screw both bolts
+    # the cage together AND is the planet axle — the planet spins on the boss OD, the
+    # boss height sets the plate gap so tightening can't crush the planet.
+    planet_journal_dia: float = 4.5  # integral boss OD the planet rotates on
+    planet_bore_clear: float = 0.20  # planet bore radial clearance over its journal
+    planet_axial_clear: float = 0.40 # axial play (boss height - gear thickness)
+    planet_screw_dia: float = 2.5    # M2.5 cage/axle screw
+    planet_screw_pilot: float = 2.05 # tap/heat-set pilot Ø in the boss + bottom plate
+    planet_screw_head_dia: float = 4.8  # M2.5 socket head OD (top-plate counterbore)
+    planet_screw_head_h: float = 2.5    # head counterbore depth
     ring_rim: float = 2.5           # radial body outside the ring root circle
 
     # --- Sun shaft grip (PRESS FIT, no setscrew) -------------------------------
     # The sun is the INPUT: high rpm but low torque (peak ~88 mN·m), so an
     # interference press onto the motor shaft holds it with zero radial real estate.
     # A short collar below the gear adds press length -> grip + concentricity at rpm.
+    # The collar threads down through the BIG input bearing's bore (Ø25) to reach the
+    # motor — that bore is wide open, so the collar keeps a proper Ø7 grip (no longer
+    # squeezed by the bearing). It's LONG because the bearing sits low at the motor face.
     shaft_press_fit: float = 0.05   # radial interference: bore = shaft - 2*this (printed grip)
-    sun_collar_dia: float = 7.0     # press-collar OD below the gear
-    sun_collar_h: float = 3.0       # collar height (set 0 for a gear-only bore)
+    sun_collar_dia: float = 7.0     # press-collar OD below the gear (passes the Ø25 bearing bore)
+    sun_collar_h: float = 8.5       # collar reaches from the gear down to near the motor face
     shaft_flat_depth: float = 0.0   # optional D-flat for anti-rotation (0 = round; >0 if D-shaft)
 
     # --- Motor interface (2204-class drone outrunner) — VERIFY per motor -------
@@ -86,6 +99,8 @@ class ReducerParams:
     # pilot_dia sized to the motor's CENTER boss (not the whole can).
     motor_pilot_depth: float = 0.0
     motor_pilot_dia: float = 12.0   # center-boss pilot Ø (only used if pilot_depth > 0)
+    motor_recess: float = 1.0       # shallow counterbore on the flange underside that
+                                    # pilots/centers the motor can and sinks it slightly
     motor_mount_x: float = 16.0     # 16 mm pair spacing (one axis)
     motor_mount_y: float = 19.0     # 19 mm pair spacing (perpendicular axis)
     motor_bolt_dia: float = 3.4     # M3 clearance shank (loose for printed holes)
@@ -105,13 +120,26 @@ class ReducerParams:
     nema_bolt_pilot: float = 2.5    # M3 thread-form / heat-set pilot Ø
     nema_bolt_depth: float = 5.0    # blind tapped depth from the output face
 
+    # --- Input-side bearing (straddle mount, BIGGER THAN THE MOTOR) -------------
+    # The carrier is supported on BOTH sides: 625 at the output (in the cap) + this
+    # bearing at the input. Key move: make it LARGER than the motor (OD 32 > can Ø28)
+    # and recess it low at the motor-face level. Its bore (Ø25) then sits OUTSIDE the
+    # motor-bolt circle, so the bolts pass freely INSIDE the bore — no bearing/bolt
+    # conflict at all. The carrier's downward boss rides the bore; the motor shaft + sun
+    # gear come up through the open centre. A 6705 (25x32x4) is the thin default;
+    # a 6805 (25x37x7) drops in for more capacity (same Ø25 bore -> same carrier boss).
+    in_bearing_id: float = 25.0     # 6705: 25 x 32 x 4 (carrier boss rides the bore)
+    in_bearing_od: float = 32.0
+    in_bearing_w: float = 4.0
+
     # --- Shell / fits ----------------------------------------------------------
     case_wall: float = 3.0          # radial wall outside the ring
-    flange_t: float = 3.0           # motor-mount flange thickness
+    flange_t: float = 6.5           # motor-mount flange (pockets the big input bearing low)
     cap_t: float = 3.0              # end-cap thickness (above the bearing)
-    carrier_t: float = 3.0          # output carrier plate thickness
-    motor_face_gap: float = 1.0     # axial gap: motor face -> gear plane
-    gear_carrier_gap: float = 0.5   # axial gap: gear top -> carrier underside
+    carrier_bot_t: float = 3.0      # input-side (bottom) carrier plate thickness
+    carrier_top_t: float = 3.0      # output-side (top) carrier plate thickness
+    motor_face_gap: float = 0.5     # axial gap: flange top -> bottom plate (clears bolt heads)
+    gear_carrier_gap: float = 0.5   # axial gap: gear top -> top-plate underside
     press_clear: float = 0.04       # press-fit radial clearance
     run_clear: float = 0.15         # running radial clearance
     n_case_bolts: int = 4           # cap-to-housing screws
@@ -164,8 +192,48 @@ class ReducerParams:
 
     @property
     def carrier_od(self) -> float:
-        """Carrier plate Ø: reaches just past the planet pins, clears the ring teeth."""
-        return 2 * (self.carrier_radius + self.planet_pin_dia / 2 + 1.0)
+        """Carrier plate Ø: reaches just past the planet journals, clears the ring teeth."""
+        return 2 * (self.carrier_radius + self.planet_journal_dia / 2 + 1.0)
+
+    @property
+    def hub_od(self) -> float:
+        """Carrier bottom-plate boss OD = input-bearing bore (rides the inner race)."""
+        return self.in_bearing_id
+
+    @property
+    def hub_bore_r(self) -> float:
+        """Boss bore: wide enough that the cage slides down over the pressed-on sun gear
+        during assembly (the sun + collar live in this open centre)."""
+        return self.sun_pcd / 2 + self.gear_module + 1.0   # sun tip + 1 mm
+
+    @property
+    def journal_h(self) -> float:
+        """Planet journal-boss height = gear thickness + axial play (sets the plate gap)."""
+        return self.gear_thickness + self.planet_axial_clear
+
+    @property
+    def planet_bore_dia(self) -> float:
+        return self.planet_journal_dia + 2 * self.planet_bore_clear
+
+    @property
+    def bearing_floor_z(self) -> float:
+        """Underside of the input-bearing pocket (bearing seats here, low in the flange)."""
+        return self.flange_t - self.in_bearing_w
+
+    @property
+    def motor_face_z(self) -> float:
+        """Motor mount face: recessed up into the flange underside a little."""
+        return self.motor_recess
+
+    @property
+    def hub_len_down(self) -> float:
+        """Bottom-plate boss reaches from the plate down onto the bearing floor."""
+        return self.carrier_bot_z - self.bearing_floor_z
+
+    @property
+    def screw_engage(self) -> float:
+        """Axle-screw thread engagement: through the journal boss + into the plate."""
+        return self.journal_h + self.carrier_bot_t - 1.0
 
     @property
     def nema_plate(self) -> float:
@@ -190,8 +258,14 @@ class ReducerParams:
 
     # axial datum: z=0 at the motor mount face (bottom of the flange)
     @property
-    def gear_z(self) -> float:
+    def carrier_bot_z(self) -> float:
+        """Bottom carrier plate underside (clears the seated motor-bolt heads)."""
         return self.flange_t + self.motor_face_gap
+
+    @property
+    def gear_z(self) -> float:
+        """Gear plane = top of the bottom plate (planet journals rise from here)."""
+        return self.carrier_bot_z + self.carrier_bot_t
 
     @property
     def sun_z(self) -> float:
@@ -199,13 +273,14 @@ class ReducerParams:
         return self.gear_z - self.sun_collar_h
 
     @property
-    def carrier_z(self) -> float:
-        return self.gear_z + self.gear_thickness + self.gear_carrier_gap
+    def carrier_top_z(self) -> float:
+        """Top (output) plate seats on the journal-boss tops (the bosses set the gap)."""
+        return self.gear_z + self.journal_h
 
     @property
     def housing_h(self) -> float:
         """Tube height: flange up to the top of the carrier."""
-        return self.carrier_z + self.carrier_t
+        return self.carrier_top_z + self.carrier_top_t
 
     @property
     def ring_root_r(self) -> float:
@@ -269,17 +344,41 @@ def validate(p: ReducerParams) -> bool:
     case_wall_actual = (p.case_od - p.ring_od) / 2
     check("case wall around ring", case_wall_actual >= 1.5, f"{case_wall_actual:.2f} mm")
 
-    # 5b) sun press collar: fits the flange bore, clears the motor face, walls the bore
-    shaft_clear_r = p.sun_pcd / 2 + p.gear_module + p.run_clear
-    check("sun collar fits flange bore", p.sun_collar_dia / 2 + p.run_clear <= shaft_clear_r,
-          f"collar R {p.sun_collar_dia/2:.1f} in bore R {shaft_clear_r:.1f}")
-    check("sun collar clears motor face", p.sun_z >= 0.3,
-          f"collar bottom at z={p.sun_z:.1f} mm")
+    # 5b) sun press collar: passes the open bearing bore, clears the motor, walls the bore
+    check("sun collar clears boss bore", p.sun_collar_dia / 2 + 0.5 <= p.hub_bore_r,
+          f"collar R {p.sun_collar_dia/2:.2f} in boss bore R {p.hub_bore_r:.2f}")
+    check("sun collar clears motor face", p.sun_z >= p.motor_face_z,
+          f"collar bottom z={p.sun_z:.1f} vs motor face z={p.motor_face_z:.1f}")
     bore_wall = p.sun_collar_dia / 2 - (p.motor_shaft_dia / 2 - p.shaft_press_fit)
     check("sun press-bore wall", bore_wall >= 1.0,
           f"{bore_wall:.2f} mm around Ø{p.motor_shaft_dia} shaft (press {p.shaft_press_fit*1000:.0f} µm)")
 
-    # 6) carrier rotates inside the ring teeth without clashing
+    # 5c) INPUT bearing: BIGGER than the motor, its bore sits OUTSIDE the bolt circle so
+    #     the bolts pass freely inside it; it seats low in the flange; the boss bore
+    #     clears the sun gear; the boss has wall between the bearing bore and that gap.
+    check("input bearing bigger than motor", p.in_bearing_od > p.motor_can_dia,
+          f"bearing Ø{p.in_bearing_od} OD vs motor can Ø{p.motor_can_dia}")
+    bolt_outer = max(sqrt(x * x + y * y) for x, y, _ in p.mount_holes()) + p.motor_bolt_dia / 2
+    check("bolt holes inside bearing bore", bolt_outer <= p.in_bearing_id / 2,
+          f"bolt shank outer R {bolt_outer:.2f} <= bore R {p.in_bearing_id/2:.2f}")
+    check("input bearing fits case wall", p.in_bearing_od + 2 * 1.5 <= p.case_od,
+          f"bearing Ø{p.in_bearing_od} + 3 wall <= case Ø{p.case_od:.1f}")
+    check("input bearing seats on floor", p.in_bearing_w + p.motor_recess + 1.0 <= p.flange_t,
+          f"bearing {p.in_bearing_w} + recess {p.motor_recess} + 1.0 floor <= flange {p.flange_t}")
+    boss_wall = p.hub_od / 2 - p.hub_bore_r
+    check("bearing boss wall", boss_wall >= 1.5,
+          f"{boss_wall:.2f} mm (Ø{p.hub_od} boss over Ø{2*p.hub_bore_r:.1f} bore)")
+
+    # 5d) planet journal: boss walls the screw pilot, planet bore walls its rim
+    journal_wall = p.planet_journal_dia / 2 - p.planet_screw_pilot / 2
+    check("journal wall around screw", journal_wall >= 0.7,
+          f"{journal_wall:.2f} mm (Ø{p.planet_journal_dia} boss over Ø{p.planet_screw_pilot} pilot)")
+    planet_root_r = p.planet_pcd / 2 - 1.25 * p.gear_module
+    planet_rim = planet_root_r - p.planet_bore_dia / 2
+    check("planet rim over journal", planet_rim >= 1.2,
+          f"{planet_rim:.2f} mm (root R {planet_root_r:.2f} - bore R {p.planet_bore_dia/2:.2f})")
+
+    # 6) both carrier plates rotate inside the ring teeth without clashing
     carrier_clear = p.ring_inner_tip_r - (p.carrier_od / 2 + p.run_clear)
     check("carrier clears ring teeth", carrier_clear >= 0.4, f"{carrier_clear:.2f} mm")
 
@@ -315,36 +414,46 @@ def validate(p: ReducerParams) -> bool:
 # --------------------------------------------------------------------------- #
 
 def make_housing(p: ReducerParams):
-    """Motor-mount flange + tube with the ring gear BUILT IN (teeth carved into the
-    bore at the gear plane) and countersunk M3 mounts for the motor underneath."""
+    """Motor-mount flange + tube with the ring gear BUILT IN and a BIG input-bearing
+    pocket recessed LOW (at the motor-face level). The bearing is wider than the motor,
+    so its bore sits outside the bolt circle and the countersunk M3 mounts pass freely
+    inside the open bore. The motor can pilots into a shallow underside recess."""
     case_r = p.case_od / 2
     bolt_r = p.motor_bolt_dia / 2
     head_r = p.motor_bolt_head_dia / 2
     cs_depth = head_r - bolt_r                # 90° flat-head countersink depth
+    gz, gt = p.gear_z, p.gear_thickness
+    floor_z = p.bearing_floor_z              # bearing seats here, low in the flange
+    mface = p.motor_face_z                   # recessed motor mount face
     with BuildPart() as h:
         Cylinder(radius=case_r, height=p.housing_h, align=_MIN)
-        # carrier-clearance bore above the gear plane (clears carrier + ring tips)
-        with Locations((0, 0, p.gear_z + p.gear_thickness)):
-            Cylinder(radius=p.carrier_bore_r,
-                     height=p.housing_h - (p.gear_z + p.gear_thickness) + 0.1,
-                     align=_MIN, mode=Mode.SUBTRACT)
-        # flange bore: clears the sun collar + motor shaft (z 0..flange_t only)
-        Cylinder(radius=p.shaft_clear_r, height=p.flange_t, align=_MIN, mode=Mode.SUBTRACT)
-        # motor-face GAP is open, not a solid slab: clear it down to the flange so the
-        # bottom is just the flange and the mount countersinks open INTO the cavity
-        # (screws drop in from the top through the ring bore).
+        # below-gear cavity: bottom plate spins here (flange top -> gear plane)
         with Locations((0, 0, p.flange_t)):
-            Cylinder(radius=p.carrier_bore_r, height=p.gear_z - p.flange_t + 0.01,
+            Cylinder(radius=p.carrier_bore_r, height=gz - p.flange_t,
                      align=_MIN, mode=Mode.SUBTRACT)
-        # optional center-boss pilot recess (off by default; sized to the boss, not the can)
-        if p.motor_pilot_depth > 0:
-            Cylinder(radius=p.motor_pilot_dia / 2 + 0.2, height=p.motor_pilot_depth,
+        # above-gear cavity: top plate + ring tooth tips (gear top -> housing top)
+        with Locations((0, 0, gz + gt)):
+            Cylinder(radius=p.carrier_bore_r, height=p.housing_h - (gz + gt) + 0.1,
                      align=_MIN, mode=Mode.SUBTRACT)
-        # motor mounts: BOTH patterns, countersunk M3 flat-heads (motor underneath)
+        # BIG input-bearing pocket, recessed low (opens up toward the carrier)
+        with Locations((0, 0, floor_z)):
+            Cylinder(radius=p.in_bearing_od / 2 + p.press_clear, height=p.in_bearing_w + 0.01,
+                     align=_MIN, mode=Mode.SUBTRACT)
+        # motor-can pilot recess on the underside (centers + sinks the motor a little)
+        if p.motor_recess > 0:
+            Cylinder(radius=p.motor_can_dia / 2 + 0.25, height=p.motor_recess,
+                     align=_MIN, mode=Mode.SUBTRACT)
+        # shaft/collar clearance bore through the floor (motor face -> bearing bore)
+        with Locations((0, 0, mface)):
+            Cylinder(radius=p.sun_collar_dia / 2 + p.run_clear, height=floor_z - mface + 0.01,
+                     align=_MIN, mode=Mode.SUBTRACT)
+        # motor mounts: BOTH patterns, countersunk M3 flat-heads. They live in the floor
+        # between the motor face and the bearing; heads seat flush at the floor top and
+        # the screws drop in through the open bearing bore.
         for x, y, _ in p.mount_holes():
-            with Locations((x, y, 0)):
-                Cylinder(radius=bolt_r, height=p.flange_t, align=_MIN, mode=Mode.SUBTRACT)
-            with Locations((x, y, p.flange_t - cs_depth)):     # cone opens at the top face
+            with Locations((x, y, mface)):
+                Cylinder(radius=bolt_r, height=floor_z - mface, align=_MIN, mode=Mode.SUBTRACT)
+            with Locations((x, y, floor_z - cs_depth)):        # cone opens up at the floor top
                 Cone(bottom_radius=bolt_r, top_radius=head_r, height=cs_depth + 0.01,
                      align=_MIN, mode=Mode.SUBTRACT)
         # cap screw holes (into the top rim)
@@ -381,31 +490,62 @@ def make_sun(p: ReducerParams):
 
 
 def make_planet(p: ReducerParams):
-    """Planet gear, bored with running clearance over its Ø1.5 dowel."""
+    """Planet gear, bored with running clearance over its integral journal boss."""
     return spur_gear(p.gear_module, p.n_planet, p.gear_thickness,
-                     bore=p.planet_pin_dia + 2 * p.planet_bore_clear)
+                     bore=p.planet_bore_dia)
 
 
-def make_carrier(p: ReducerParams):
-    """Output carrier: holds the 4 planet dowels, opens a sun-clearance pocket on the
-    bottom so the sun meshes the planets, and carries the Ø5 D-shaft output up top."""
+def make_carrier_bottom(p: ReducerParams):
+    """Input-side carrier plate: a downward BOSS that rides the big input bearing's bore,
+    bored wide open so the cage slides over the pressed-on sun gear (the sun + collar live
+    in that open centre), plus 4 upward journal bosses the planets ride on. The axle
+    screws thread up into those bosses to clamp the cage."""
+    with BuildPart() as c:
+        Cylinder(radius=p.carrier_od / 2, height=p.carrier_bot_t, align=_MIN)
+        # planet journal bosses on top (planet rides the OD; screw pilot down the center)
+        with Locations((0, 0, p.carrier_bot_t)):
+            with PolarLocations(p.carrier_radius, p.n_planets):
+                Cylinder(radius=p.planet_journal_dia / 2, height=p.journal_h, align=_MIN)
+        # downward bearing boss (rides the input-bearing bore)
+        with Locations((0, 0, -p.hub_len_down)):
+            Cylinder(radius=p.hub_od / 2, height=p.hub_len_down, align=_MIN)
+    body = c.part
+    with BuildPart() as cut:
+        # screw pilots down each boss into the plate (tap / heat-set)
+        with Locations((0, 0, p.carrier_bot_t + p.journal_h - p.screw_engage)):
+            with PolarLocations(p.carrier_radius, p.n_planets):
+                Cylinder(radius=p.planet_screw_pilot / 2, height=p.screw_engage + 0.01,
+                         align=_MIN)
+        # wide central bore through the plate + boss (clears the sun gear for assembly)
+        with Locations((0, 0, -p.hub_len_down)):
+            Cylinder(radius=p.hub_bore_r, height=p.hub_len_down + p.carrier_bot_t + 0.01,
+                     align=_MIN)
+    return body - cut.part
+
+
+def make_carrier_top(p: ReducerParams):
+    """Output-side carrier plate: seats on the journal-boss tops, counterbored for the
+    axle-screw heads, and carries the Ø5 D-shaft output (rides the 625 in the cap)."""
     shaft_len = p.out_round_len + p.out_shaft_protrude
     sd = p.out_shaft_dia
+    hh = p.planet_screw_head_h
     with BuildPart() as c:
-        Cylinder(radius=p.carrier_od / 2, height=p.carrier_t, align=_MIN)
-        # planet dowel holes (press fit), through the plate
-        with PolarLocations(p.carrier_radius, p.n_planets):
-            Cylinder(radius=p.planet_pin_dia / 2 - p.press_clear, height=p.carrier_t,
-                     align=_MIN, mode=Mode.SUBTRACT)
-        # sun-clearance pocket on the bottom (so the sun gear has room to mesh)
-        Cylinder(radius=p.sun_pocket_r, height=2.0, align=_MIN, mode=Mode.SUBTRACT)
+        Cylinder(radius=p.carrier_od / 2, height=p.carrier_top_t, align=_MIN)
         # Ø5 output shaft on top: round through the bearing, D-flat on the protrusion
-        with Locations((0, 0, p.carrier_t)):
+        with Locations((0, 0, p.carrier_top_t)):
             Cylinder(radius=sd / 2, height=shaft_len, align=_MIN)
+        # axle-screw clearance + head counterbore at each planet station
+        with PolarLocations(p.carrier_radius, p.n_planets):
+            Cylinder(radius=p.planet_screw_dia / 2 + 0.2, height=p.carrier_top_t,
+                     align=_MIN, mode=Mode.SUBTRACT)
+        with Locations((0, 0, p.carrier_top_t - hh)):
+            with PolarLocations(p.carrier_radius, p.n_planets):
+                Cylinder(radius=p.planet_screw_head_dia / 2, height=hh + 0.01,
+                         align=_MIN, mode=Mode.SUBTRACT)
     shaft = c.part
     if p.out_shaft_flat_depth > 0:                 # cut the D-flat on the protruding part
         flat_pos = sd / 2 - p.out_shaft_flat_depth
-        z0 = p.carrier_t + p.out_round_len         # flat starts at the cap face
+        z0 = p.carrier_top_t + p.out_round_len     # flat starts at the cap face
         shaft = shaft - (Pos(flat_pos + sd, 0, z0 + p.out_shaft_protrude / 2)
                          * Box(2 * sd, 4 * sd, p.out_shaft_protrude + 0.2))
     return shaft
@@ -445,7 +585,8 @@ def build(p: ReducerParams, outdir: Path):
         "housing": make_housing(p),     # ring gear is built into the housing now
         "sun": make_sun(p),
         "planet": make_planet(p),
-        "carrier": make_carrier(p),
+        "carrier_bottom": make_carrier_bottom(p),
+        "carrier_top": make_carrier_top(p),
         "cap": make_cap(p),
     }
     for name, part in parts.items():
@@ -456,11 +597,12 @@ def build(p: ReducerParams, outdir: Path):
     # assemble on the shared axial datum (z=0 at the motor face)
     asm = [Pos(0, 0, 0) * parts["housing"]]
     asm.append(Pos(0, 0, p.sun_z) * parts["sun"])
+    asm.append(Pos(0, 0, p.carrier_bot_z) * parts["carrier_bottom"])
     for i in range(p.n_planets):
         ang = 2 * pi * i / p.n_planets
         x, y = p.carrier_radius * cos(ang), p.carrier_radius * sin(ang)
         asm.append(Pos(x, y, p.gear_z) * parts["planet"])
-    asm.append(Pos(0, 0, p.carrier_z) * parts["carrier"])
+    asm.append(Pos(0, 0, p.carrier_top_z) * parts["carrier_top"])
     asm.append(Pos(0, 0, p.housing_h + 0.5) * parts["cap"])
     from build123d import Compound
     Compound(children=asm)  # validates placement; STEP of the stack:
@@ -487,6 +629,10 @@ def report(p: ReducerParams):
           f"({p.shaft_press_fit*1000:.0f} µm interference, {grip}), {p.sun_collar_h:.0f}mm collar, no setscrew")
     print(f"output ............ NEMA-17 face ({p.nema_plate:.0f}mm sq, {p.nema_bolt_spacing:.0f}mm M3 pattern) "
           f"+ Ø{p.out_shaft_dia:.0f} D-shaft ({p.out_shaft_protrude:.0f}mm out), 625 bearing")
+    print(f"carrier ........... 2-plate cage, planets bolted on M{p.planet_screw_dia:.1f} axles "
+          f"(Ø{p.planet_journal_dia:.1f} journal bosses set the plate gap)")
+    print(f"bearings .......... straddle: input 6705 ({p.in_bearing_id:.0f}x{p.in_bearing_od:.0f}"
+          f"x{p.in_bearing_w:.0f}, bigger than the motor) low in flange + output 625 in cap")
 
 
 if __name__ == "__main__":
