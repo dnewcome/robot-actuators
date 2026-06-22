@@ -70,6 +70,7 @@ class InvParams:
     cage_screw_head_dia: float = 6.0  # M3 button-head OD (bottom-plate counterbore)
     cage_screw_head_h: float = 2.4
     n_cage_posts: int = 3           # standoff posts BETWEEN the planets (own screws+spacers)
+    cage_post_dia: float = 5.0      # integral standoff-post OD (printed into carrier_bottom)
     ring_rim: float = 2.5           # ring body outside the root circle
 
     # --- Sun: PRESS-FIT onto the Ø5 NEMA-17 stepper shaft (no setscrew) ---------
@@ -305,9 +306,12 @@ def validate(p: InvParams) -> bool:
     check("roller sets axial play", 0.2 <= axial <= 1.0, f"{axial:.2f} mm gap-vs-gear")
     # standoff posts (between planets) must clear the adjacent planet tips
     d_post = 2 * p.carrier_radius * sin((pi * p.post_angle_start / 180.0) / 2.0)
-    post_clear = d_post - p.planet_tip_dia / 2 - p.roller_dia / 2
-    check("standoff posts clear planets", post_clear >= 0.5,
-          f"{post_clear:.2f} mm (post Ø{p.roller_dia} at the {p.post_angle_start:.0f}° gaps)")
+    post_clear = d_post - p.planet_tip_dia / 2 - p.cage_post_dia / 2
+    check("integral posts clear planets", post_clear >= 0.5,
+          f"{post_clear:.2f} mm (Ø{p.cage_post_dia} posts at the {p.post_angle_start:.0f}° gaps)")
+    post_wall = p.cage_post_dia / 2 - (p.cage_screw_dia / 2 + 0.25)
+    check("post wall over screw clearance", post_wall >= 0.5,
+          f"{post_wall:.2f} mm around the Ø{p.cage_screw_dia} screw bore")
 
     # OUTPUT hub + 30x37 + cap
     check("30x37 OD fits the tube wall", p.out_bearing_od + 2 * 1.5 <= p.case_od + 0.6,
@@ -417,19 +421,29 @@ def make_planet(p: InvParams):
 
 
 def make_carrier_bottom(p: InvParams):
-    """Input-side carrier plate: wide central bore (slides over the pressed sun gear),
-    plus a cage screw at EVERY station — 3 down the planet rollers AND 3 standoff posts
-    in the gaps between planets — each with a button-head counterbore on the underside.
-    The posts (own Ø5x10 spacers) bolt the cage rigidly without touching the planets."""
-    stations = [(p.n_planets, 0.0), (p.n_cage_posts, p.post_angle_start)]  # (count, start°)
+    """Input-side carrier plate with the standoff posts BUILT IN: a wide central bore
+    (slides over the pressed sun gear), 3 INTEGRAL standoff posts in the gaps between
+    planets (height = the roller_len plate gap, so they set the gap and the 9.5 mm gears
+    can't pinch), and a cage screw at every station. Planet stations carry the Ø5 rollers
+    (planet axles); post stations are the printed posts. Screws thread up into the top hub;
+    button heads counterbore on the underside."""
     with BuildPart() as c:
         Cylinder(radius=p.carrier_bot_od / 2, height=p.carrier_bot_t, align=_MIN)
+        # integral standoff posts rising to the top-hub underside (the spacers)
+        with Locations((0, 0, p.carrier_bot_t)):
+            with PolarLocations(p.carrier_radius, p.n_cage_posts, start_angle=p.post_angle_start):
+                Cylinder(radius=p.cage_post_dia / 2, height=p.roller_len, align=_MIN)
         # central clearance bore for the sun gear (assembly)
         Cylinder(radius=p.hub_clear_bore_r, height=p.carrier_bot_t, align=_MIN, mode=Mode.SUBTRACT)
-        for count, start in stations:
-            with PolarLocations(p.carrier_radius, count, start_angle=start):
-                Cylinder(radius=p.cage_screw_dia / 2 + 0.25, height=p.carrier_bot_t,
-                         align=_MIN, mode=Mode.SUBTRACT)
+        # screw clearance: planet stations through the plate; post stations through plate+post
+        with PolarLocations(p.carrier_radius, p.n_planets):
+            Cylinder(radius=p.cage_screw_dia / 2 + 0.25, height=p.carrier_bot_t,
+                     align=_MIN, mode=Mode.SUBTRACT)
+        with PolarLocations(p.carrier_radius, p.n_cage_posts, start_angle=p.post_angle_start):
+            Cylinder(radius=p.cage_screw_dia / 2 + 0.25, height=p.carrier_bot_t + p.roller_len + 0.01,
+                     align=_MIN, mode=Mode.SUBTRACT)
+        # button-head counterbores on the underside (z=0), every station
+        for count, start in [(p.n_planets, 0.0), (p.n_cage_posts, p.post_angle_start)]:
             with PolarLocations(p.carrier_radius, count, start_angle=start):
                 Cylinder(radius=p.cage_screw_head_dia / 2, height=p.cage_screw_head_h,
                          align=_MIN, mode=Mode.SUBTRACT)
@@ -531,13 +545,12 @@ def build(p: InvParams, outdir: Path):
         asm.append(Pos(x, y, p.gear_z) * parts["planet"])
     asm.append(Pos(0, 0, p.carrier_top_z) * parts["carrier_top"])
     asm.append(Pos(0, 0, p.housing_h) * parts["cap"])
-    # Ø5x10 rollers: planet axles + standoff posts (kit hardware, shown for reference)
+    # Ø5x10 planet-axle rollers (kit hardware; the standoff posts are now part of carrier_bottom)
     roller = Cylinder(radius=p.roller_dia / 2, height=p.roller_len, align=_MIN)
-    for count, start in [(p.n_planets, 0.0), (p.n_cage_posts, p.post_angle_start)]:
-        for i in range(count):
-            ang = start * pi / 180 + 2 * pi * i / count
-            x, y = p.carrier_radius * cos(ang), p.carrier_radius * sin(ang)
-            asm.append(Pos(x, y, p.gear_z) * roller)
+    for i in range(p.n_planets):
+        ang = 2 * pi * i / p.n_planets
+        x, y = p.carrier_radius * cos(ang), p.carrier_radius * sin(ang)
+        asm.append(Pos(x, y, p.gear_z) * roller)
     export_step(Compound(children=[a for a in asm]), str(outdir / "assembly.step"))
     print("  wrote assembly.step")
 
@@ -568,7 +581,7 @@ def report(p: InvParams):
     print(f"output ............ NEMA-17 face + Ø{p.out_shaft_dia:.0f} shaft ({p.out_shaft_protrude:.0f}mm out) "
           f"on a 30x37 bearing -> chain a 2nd stage")
     print(f"carrier ........... 2-plate cage: {p.n_planets} planets on Ø{p.roller_dia:.0f}x{p.roller_len:.0f} rollers "
-          f"+ {p.n_cage_posts} standoff posts between them, all M{p.cage_screw_dia:.0f} clamped")
+          f"+ {p.n_cage_posts} INTEGRAL standoff posts between them, all M{p.cage_screw_dia:.0f} clamped")
     print(f"bearings .......... input 7x13x4 (sun) + output 30x37x4 (carrier hub)")
     print(f"envelope .......... Ø{p.case_od:.1f} tube, {p.housing_h:.1f}mm body (vendor-matched)")
 
