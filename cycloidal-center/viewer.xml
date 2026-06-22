@@ -1,0 +1,62 @@
+<mujoco model="cycloidal_center_viewer">
+  <!-- Straddle-carrier centre-output cycloidal, driven KINEMATICALLY by sim.py.
+       Translucent housing + cap show the enclosed stack; the internals animate at
+       their true cycloidal rates:
+         eccentric (input) : spins ratio x, opposite sense (the fast input)
+         disc              : ORBITS at radius E at the input frequency AND spins
+                             slowly with the carrier (-1/lobes of the input)
+         carrier cage      : 1x, the slow output (both plates + flange co-rotate)
+       Parts sit on drive.py's axial datum (z=0 at the motor face). mm -> m via scale. -->
+
+  <compiler meshdir="out" angle="degree" autolimits="true"/>
+  <option gravity="0 0 0"/>
+
+  <asset>
+    <mesh name="housing"       file="housing.stl"       scale="0.001 0.001 0.001"/>
+    <mesh name="eccentric"     file="eccentric.stl"     scale="0.001 0.001 0.001"/>
+    <mesh name="disc"          file="disc.stl"          scale="0.001 0.001 0.001"/>
+    <mesh name="carrier_back"  file="carrier_back.stl"  scale="0.001 0.001 0.001"/>
+    <mesh name="carrier_front" file="carrier_front.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="output_cap"    file="output_cap.stl"    scale="0.001 0.001 0.001"/>
+    <material name="case" rgba="0.70 0.72 0.75 0.12"/>   <!-- translucent shell    -->
+    <material name="ecc"  rgba="0.95 0.72 0.10 1"/>      <!-- input: bright, opaque -->
+    <material name="disc" rgba="0.20 0.80 0.40 1"/>
+    <material name="carr" rgba="0.80 0.45 0.30 0.55"/>   <!-- translucent: see disc -->
+    <material name="mark" rgba="0.90 0.10 0.10 1"/>
+  </asset>
+
+  <worldbody>
+    <light pos="0.05 -0.05 0.13" dir="-0.4 0.4 -1"/>
+    <camera name="iso" pos="0.060 -0.060 0.060" xyaxes="0.7 0.7 0 -0.4 0.4 0.82"/>
+
+    <!-- fixed shell -->
+    <geom type="mesh" mesh="housing" material="case" contype="0" conaffinity="0"/>
+    <geom type="mesh" mesh="output_cap" material="case" contype="0" conaffinity="0"/>
+
+    <!-- eccentric input: spins ratio x about the main axis (z=0 at its base = z_bb) -->
+    <body name="ecc_body" pos="0 0 0.001">
+      <joint name="joint_ecc" type="hinge" axis="0 0 1"/>
+      <geom type="mesh" mesh="eccentric" material="ecc" contype="0" conaffinity="0"/>
+
+      <!-- disc rides the offset cam: its centre sits at radius E in the rotating
+           eccentric frame (so it ORBITS), and it spins about that centre. -->
+      <body name="disc_body" pos="0.0007 0 0.007">
+        <joint name="joint_disc" type="hinge" axis="0 0 1"/>
+        <geom type="mesh" mesh="disc" material="disc" contype="0" conaffinity="0"/>
+        <geom type="box" pos="0.013 0 0.0025" size="0.004 0.001 0.001" material="mark"
+              contype="0" conaffinity="0"/>
+      </body>
+    </body>
+
+    <!-- output carrier cage: 1x slow output, both plates + the flange co-rotate -->
+    <body name="carrier_body" pos="0 0 0">
+      <joint name="joint_out" type="hinge" axis="0 0 1"/>
+      <geom type="mesh" mesh="carrier_back"  material="carr" pos="0 0 0.005"
+            contype="0" conaffinity="0"/>
+      <geom type="mesh" mesh="carrier_front" material="carr" pos="0 0 0.013"
+            contype="0" conaffinity="0"/>
+      <geom type="box" pos="0.014 0 0.021" size="0.004 0.0012 0.0012" material="mark"
+            contype="0" conaffinity="0"/>
+    </body>
+  </worldbody>
+</mujoco>
