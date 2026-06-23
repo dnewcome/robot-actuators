@@ -73,9 +73,10 @@ class InvParams:
     cage_post_dia: float = 5.0      # integral standoff-post OD (printed into carrier_bottom)
     ring_rim: float = 2.5           # ring body outside the root circle
 
-    # --- Sun: PRESS-FIT onto the Ø5 NEMA-17 stepper shaft (no setscrew) ---------
+    # --- Sun: PRESS-FIT onto the Ø5 NEMA-17 stepper D-shaft (no setscrew) --------
     motor_shaft_dia: float = 5.0    # NEMA-17 stepper shaft
     shaft_press_fit: float = 0.05   # radial interference: bore = shaft - 2*this
+    shaft_flat_depth: float = 0.5   # D-flat on the stepper shaft -> matching D-bore (0 = round)
     sun_journal_dia: float = 7.0    # journal below the gear, rides the 7x13 bore
     # sun_journal_h is DERIVED: it must reach from the 7x13 seat up to the gear plane so the
     # sun gear lands coplanar with the planets (see property below).
@@ -98,7 +99,7 @@ class InvParams:
     # --- Output: carrier shaft + NEMA-17 face on the cap -----------------------
     out_shaft_dia: float = 5.0          # Ø5 output (a second stage presses its sun on)
     out_shaft_protrude: float = 15.0    # length past the cap face
-    out_shaft_flat_depth: float = 0.0   # >0 for a D-flat
+    out_shaft_flat_depth: float = 0.5   # D-flat on the Ø5 output shaft (so the next stage keys to it)
     # the 30x37 carries the carrier: a LAND seats its inner race and lifts the broad
     # carrier face off the housing top, so the bearing (not a rubbing face) takes the load
     out_bearing_land_dia: float = 32.5  # inner-race seat Ø (between bore 30 and OD 37)
@@ -532,16 +533,18 @@ def make_body(p: InvParams):
 
 
 def make_sun(p: InvParams):
-    """Sun gear + Ø7 journal, bored as an interference PRESS FIT onto the Ø5 stepper
-    shaft. Journal rides the 7x13; gear meshes the planets."""
+    """Sun gear + Ø7 journal, bored as an interference PRESS FIT onto the Ø5 stepper shaft.
+    With shaft_flat_depth>0 the bore is a D (matching the stepper's D-flat) for positive
+    anti-rotation. Journal rides the 7x13; gear meshes the planets."""
     bore_r = p.motor_shaft_dia / 2.0 - p.shaft_press_fit
     gear = Pos(0, 0, p.sun_journal_h) * spur_gear(p.gear_module, p.n_sun, p.gear_thickness, bore=0.0)
     journal = Pos(0, 0, p.sun_journal_h / 2) * Cylinder(radius=p.sun_journal_dia / 2, height=p.sun_journal_h)
     sun = gear + journal
     H = p.sun_journal_h + p.gear_thickness
     bore = Cylinder(radius=bore_r, height=3 * H)
-    if p.out_shaft_flat_depth > 0:  # (unused for the sun; round press bore)
-        pass
+    if p.shaft_flat_depth > 0:  # carve the D-flat into the bore (interferes by shaft_press_fit too)
+        flat_pos = bore_r - p.shaft_flat_depth
+        bore = bore - Pos(flat_pos + bore_r, 0, 0) * Box(2 * bore_r, 4 * bore_r, 3 * H)
     return sun - bore
 
 
@@ -752,9 +755,11 @@ def report(p: InvParams):
     print(f"backlash .......... ~{p.output_lash_deg:.2f}° at output (single stage)")
     print(f"case .............. 3 parts (base + body + cap) clamped by {p.n_case_bolts}x M{p.case_bolt_dia:.0f}x"
           f"{p.case_bolt_len:.0f} through-bolts into captive nuts; body OD Ø{p.case_od:.1f} = NEMA plate width")
+    grip = f"D-flat {p.shaft_flat_depth:.1f}mm" if p.shaft_flat_depth > 0 else "round"
     print(f"input ............. SEPARATE NEMA-17 base ({p.out_plate:.0f}mm sq, 31mm M3) + Ø{p.motor_shaft_dia:.0f} "
-          f"press-fit sun ({p.shaft_press_fit*1000:.0f} µm); motor + 7x13 fit before the body goes on")
-    print(f"output ............ NEMA-17 face + Ø{p.out_shaft_dia:.0f} shaft ({p.out_shaft_protrude:.0f}mm out) "
+          f"press-fit sun ({p.shaft_press_fit*1000:.0f} µm, {grip}); motor + 7x13 fit before the body goes on")
+    oflat = f"D-flat {p.out_shaft_flat_depth:.1f}mm" if p.out_shaft_flat_depth > 0 else "round"
+    print(f"output ............ NEMA-17 face + Ø{p.out_shaft_dia:.0f} {oflat} shaft ({p.out_shaft_protrude:.0f}mm out) "
           f"on a 30x37 bearing -> chain a 2nd stage")
     print(f"output support .... Ø{p.out_bearing_land_dia:.1f} land seats the 30x37 inner race; carrier face "
           f"clears the housing {p.carrier_face_clear:.2f}mm -> bearing takes the load")
