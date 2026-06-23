@@ -130,7 +130,6 @@ class InvParams:
     case_bolt_head_h: float = 2.8   # button-head counterbore in the base underside
     case_bolt_len: float = 20.0     # off-the-shelf through-bolt length (under head) to target
     n_case_bolts: int = 4
-    case_register_h: float = 2.5    # base->body locating spigot (tongue) height
 
     output_lash_deg: float = 0.25
 
@@ -212,16 +211,6 @@ class InvParams:
         clear_bearing = self.out_bearing_od / 2 + self.case_bolt_dia / 2 + 0.3
         clear_ring = self.ring_root_r + self.ring_rim + self.case_bolt_dia / 2 + 0.5
         return max(clear_bearing, clear_ring)
-
-    @property
-    def register_ir(self) -> float:
-        """Inner radius of the base->body locating tongue (clears the carrier cavity)."""
-        return self.carrier_bore_below_r + 1.0
-
-    @property
-    def register_or(self) -> float:
-        """Outer radius of the locating tongue (stays inboard of the through-bolts)."""
-        return self.case_bolt_r - self.case_bolt_dia / 2 - 1.0
 
     @property
     def out_plate(self) -> float:
@@ -363,12 +352,10 @@ def validate(p: InvParams) -> bool:
           and p.sun_z + p.sun_journal_h >= p.flange_t,
           f"journal z {p.sun_z:.1f}..{p.sun_z + p.sun_journal_h:.1f} covers bearing z "
           f"{p.in_bearing_floor_z:.1f}..{p.flange_t:.1f}")
-    # base->body locating tongue: clears the cavity inboard and the through-bolts outboard
-    check("register tongue clears cavity + bolts",
-          p.register_ir > p.carrier_bore_below_r and
-          p.register_or < p.case_bolt_r - p.case_bolt_dia / 2 - 0.3,
-          f"tongue R {p.register_ir:.1f}..{p.register_or:.1f} between cavity R "
-          f"{p.carrier_bore_below_r:.1f} and bolt-inner R {p.case_bolt_r - p.case_bolt_dia/2:.1f}")
+    # the lower 30x37 pocket must be open at the base top (no overhang) so the bearing drops in
+    check("lower 30x37 pocket opens at the base top",
+          p.out_bearing_od / 2 + p.press_clear <= p.out_plate / 2,
+          f"pocket R {p.out_bearing_od/2:.1f} clear to the top face (no register overhang)")
 
     # INPUT STRADDLE: carrier_bottom hub rides the lower 30x37, 7x13 nests inside for the sun
     check("lower 30x37 seats in the base", p.out_bearing_w + p.in_pilot_depth + 0.5 <= p.flange_t,
@@ -494,13 +481,8 @@ def make_base(p: InvParams):
             with Locations((x, y, ft - cs)):
                 Cone(bottom_radius=bolt_r, top_radius=head_r, height=cs + 0.01,
                      align=_MIN, mode=Mode.SUBTRACT)
-        # locating TONGUE: an annular spigot rising from the base top into the body groove,
-        # so the base (and the lower bearing it carries) seats CONCENTRIC in the body
-        with Locations((0, 0, ft)):
-            Cylinder(radius=p.register_or, height=p.case_register_h, align=_MIN)
-        with Locations((0, 0, ft)):
-            Cylinder(radius=p.register_ir, height=p.case_register_h + 0.01,
-                     align=_MIN, mode=Mode.SUBTRACT)
+        # (no base->body register: the Ø37 bearing pocket opens at the top so the bearing drops
+        #  straight in; base/body/cap are located concentric by the 4 common through-bolts)
         # case through-bolts: clearance + button-head counterbore on the UNDERSIDE (flush vs stepper)
         with PolarLocations(p.case_bolt_r, p.n_case_bolts):
             Cylinder(radius=p.case_bolt_dia / 2 + 0.2, height=ft, align=_MIN, mode=Mode.SUBTRACT)
@@ -531,10 +513,6 @@ def make_body(p: InvParams):
         with PolarLocations(p.case_bolt_r, p.n_case_bolts):
             Cylinder(radius=p.case_bolt_dia / 2 + 0.2, height=body_h + 0.02, align=_MIN, mode=Mode.SUBTRACT)
     body = h.part
-    # locating GROOVE in the body bottom that receives the base tongue (concentric register)
-    groove = (Cylinder(radius=p.register_or + 0.2, height=p.case_register_h + 0.1, align=_MIN)
-              - Cylinder(radius=p.register_ir - 0.2, height=p.case_register_h + 0.1, align=_MIN))
-    body = body - groove
     # carve the internal ring teeth at the gear plane (teeth remain integral to the wall)
     ring_neg = (Pos(0, 0, gt / 2) * Cylinder(radius=p.ring_root_r, height=gt)
                 - ring_gear(p.gear_module, p.n_ring, gt, rim=p.ring_rim))
