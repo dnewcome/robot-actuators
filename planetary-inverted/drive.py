@@ -289,11 +289,27 @@ class InvParams:
 
     @property
     def carrier_bore_below_r(self) -> float:
-        return self.carrier_bot_od / 2 + self.run_clear
+        """Below-gear cavity now clears the Ø30 carrier_bottom HUB (it rides the lower 30x37)."""
+        return self.carrier_top_od / 2 + self.run_clear
 
     @property
     def carrier_bore_above_r(self) -> float:
         return self.carrier_top_od / 2 + self.run_clear
+
+    @property
+    def lower_bearing_floor_z(self) -> float:
+        """Lower 30x37 (carrier input support) seats in the base, z = floor .. floor+w."""
+        return self.flange_t - self.out_bearing_w
+
+    @property
+    def carrier_hub_h(self) -> float:
+        """carrier_bottom is a Ø30 hub from the lower bearing up to the gear plane."""
+        return self.gear_z - self.lower_bearing_floor_z
+
+    @property
+    def sun_gear_clear_r(self) -> float:
+        """Hub bore above the nested 7x13: clears the sun gear during bottom-up insertion."""
+        return self.sun_tip_dia / 2 + 0.5
 
     @property
     def post_angle_start(self) -> float:
@@ -354,15 +370,20 @@ def validate(p: InvParams) -> bool:
           f"tongue R {p.register_ir:.1f}..{p.register_or:.1f} between cavity R "
           f"{p.carrier_bore_below_r:.1f} and bolt-inner R {p.case_bolt_r - p.case_bolt_dia/2:.1f}")
 
-    # input bearing seats in the flange above the pilot recess
-    check("7x13 seats on flange ledge", p.in_bearing_w + p.in_pilot_depth + 0.5 <= p.flange_t,
-          f"bearing {p.in_bearing_w} + pilot {p.in_pilot_depth} + 0.5 <= flange {p.flange_t}")
+    # INPUT STRADDLE: carrier_bottom hub rides the lower 30x37, 7x13 nests inside for the sun
+    check("lower 30x37 seats in the base", p.out_bearing_w + p.in_pilot_depth + 0.5 <= p.flange_t,
+          f"bearing {p.out_bearing_w} + pilot {p.in_pilot_depth} + 0.5 <= flange {p.flange_t}")
+    check("carrier hub rides lower 30x37", abs(p.carrier_top_od - p.out_bearing_id) < 0.01,
+          f"hub Ø{p.carrier_top_od} == bore Ø{p.out_bearing_id}")
+    hub_wall = (p.carrier_top_od - p.in_bearing_od) / 2
+    check("hub wall (30x37 OD over nested 7x13)", hub_wall >= 3.0,
+          f"{hub_wall:.2f} mm between hub OD Ø{p.carrier_top_od} and 7x13 pocket Ø{p.in_bearing_od}")
 
-    # ring fits the case wall; carrier rotates inside the ring teeth
+    # ring fits the case wall; carrier hub rotates inside the ring teeth
     cw = (p.case_od - p.ring_od) / 2
     check("case wall around ring", cw >= 1.4, f"{cw:.2f} mm")
-    cclear = p.ring_inner_tip_r - (p.carrier_bot_od / 2 + p.run_clear)
-    check("bottom plate clears ring teeth", cclear >= 0.4, f"{cclear:.2f} mm")
+    cclear = p.ring_inner_tip_r - (p.carrier_top_od / 2 + p.run_clear)
+    check("carrier hub clears ring teeth", cclear >= 0.3, f"{cclear:.2f} mm")
 
     # planet on roller, roller sets the plate gap
     planet_root_r = p.planet_pcd / 2 - 1.25 * p.gear_module
@@ -443,26 +464,28 @@ def validate(p: InvParams) -> bool:
 # --------------------------------------------------------------------------- #
 
 def make_base(p: InvParams):
-    """Separate NEMA-17 INPUT plate (z0..flange_t). The stepper bolts to it (so the motor
-    screws are fully accessible) and the 7x13 drops in here (so the bearing is easy to seat);
-    then the whole plate bolts up to the body. Square out_plate to give the corners room for
-    the motor screws; 4 case through-bolts (heads counterbored on the underside) clamp it on."""
+    """Separate NEMA-17 INPUT plate (z0..flange_t). The stepper bolts to it (motor screws fully
+    accessible) and the LOWER 30x37 drops in here (easy to seat) — the carrier_bottom hub rides
+    its bore so the carrier is supported at the input end. Square out_plate gives the corners room
+    for the motor screws; 4 case through-bolts (heads counterbored on the underside) clamp it on."""
     bolt_r = p.nema_bolt_dia / 2
     head_r = p.nema_bolt_head_dia / 2
     cs = head_r - bolt_r
     ft = p.flange_t
-    floor = p.in_bearing_floor_z
+    floor = p.lower_bearing_floor_z
     with BuildPart() as b:
         Box(p.out_plate, p.out_plate, ft, align=_MIN)
         # Ø22 pilot recess (underside) registers the stepper boss
         Cylinder(radius=p.nema_pilot_dia / 2 + p.run_clear, height=p.in_pilot_depth,
                  align=_MIN, mode=Mode.SUBTRACT)
-        # journal clearance, then the 7x13 pocket on its ledge
+        # hub-clearance recess between the pilot and the bearing (the hub bottom clears it,
+        # and the 30x37 outer race bottoms on the ledge at `floor`)
         with Locations((0, 0, p.in_pilot_depth)):
-            Cylinder(radius=p.sun_journal_dia / 2 + p.run_clear,
+            Cylinder(radius=p.carrier_top_od / 2 + p.run_clear,
                      height=floor - p.in_pilot_depth + 0.01, align=_MIN, mode=Mode.SUBTRACT)
+        # LOWER 30x37 pocket (carrier_bottom hub rides the bore)
         with Locations((0, 0, floor)):
-            Cylinder(radius=p.in_bearing_od / 2 + p.press_clear, height=p.in_bearing_w + 0.01,
+            Cylinder(radius=p.out_bearing_od / 2 + p.press_clear, height=p.out_bearing_w + 0.01,
                      align=_MIN, mode=Mode.SUBTRACT)
         # stepper mount: 4 countersunk M3 (head flush on the gearbox side at z=ft, into the motor)
         for x, y in p.nema_holes():
@@ -538,29 +561,33 @@ def make_planet(p: InvParams):
 
 
 def make_carrier_bottom(p: InvParams):
-    """Input-side carrier plate with the standoff posts BUILT IN: a wide central bore
-    (slides over the pressed sun gear), 3 INTEGRAL standoff posts in the gaps between
-    planets (height = the roller_len plate gap, so they set the gap and the 9.5 mm gears
-    can't pinch), and a cage screw at every station. Planet stations carry the Ø5 rollers
-    (planet axles); post stations are the printed posts. Screws thread up into the captive nuts
-    in carrier_top; FLAT-HEAD screws sit in 90° countersinks on the underside (flush, no proud heads)."""
-    cs = (p.cage_screw_head_dia - p.cage_screw_dia) / 2.0   # 90° flat-head countersink depth
+    """Input-side carrier, now a Ø30 HUB (local z=0 at the hub bottom, placed at the lower
+    bearing). The hub OD rides the lower 30x37 in the base (so the carrier is supported at BOTH
+    ends — a true straddle), and the 7x13 NESTS in its bore to carry the sun. Top face (gear
+    plane) seats the planet rollers + the 3 integral standoff posts. Cage screws run from the hub
+    bottom up into the captive nuts in carrier_top — FLAT-HEAD, in 90° countersinks at the hub
+    bottom (driven before the base + bearings go on)."""
+    cs = (p.cage_screw_head_dia - p.cage_screw_dia) / 2.0
+    hub_h = p.carrier_hub_h
     with BuildPart() as c:
-        Cylinder(radius=p.carrier_bot_od / 2, height=p.carrier_bot_t, align=_MIN)
-        # integral standoff posts rising to the top-hub underside (the spacers)
-        with Locations((0, 0, p.carrier_bot_t)):
+        Cylinder(radius=p.carrier_top_od / 2, height=hub_h, align=_MIN)        # Ø30 hub
+        # integral standoff posts rising from the gear plane to the top-hub underside
+        with Locations((0, 0, hub_h)):
             with PolarLocations(p.carrier_radius, p.n_cage_posts, start_angle=p.post_angle_start):
                 Cylinder(radius=p.cage_post_dia / 2, height=p.roller_len, align=_MIN)
-        # central clearance bore for the sun gear (assembly)
-        Cylinder(radius=p.hub_clear_bore_r, height=p.carrier_bot_t, align=_MIN, mode=Mode.SUBTRACT)
-        # screw clearance: planet stations through the plate; post stations through plate+post
+        # nested 7x13 pocket (bottom) -> sun-gear clearance bore up through the top
+        Cylinder(radius=p.in_bearing_od / 2 + p.press_clear, height=p.in_bearing_w,
+                 align=_MIN, mode=Mode.SUBTRACT)
+        with Locations((0, 0, p.in_bearing_w)):
+            Cylinder(radius=p.sun_gear_clear_r, height=hub_h - p.in_bearing_w + 0.01,
+                     align=_MIN, mode=Mode.SUBTRACT)
+        # cage-screw clearance: planet stations through the hub; post stations through hub+post
         with PolarLocations(p.carrier_radius, p.n_planets):
-            Cylinder(radius=p.cage_screw_dia / 2 + 0.25, height=p.carrier_bot_t,
-                     align=_MIN, mode=Mode.SUBTRACT)
+            Cylinder(radius=p.cage_screw_dia / 2 + 0.25, height=hub_h, align=_MIN, mode=Mode.SUBTRACT)
         with PolarLocations(p.carrier_radius, p.n_cage_posts, start_angle=p.post_angle_start):
-            Cylinder(radius=p.cage_screw_dia / 2 + 0.25, height=p.carrier_bot_t + p.roller_len + 0.01,
+            Cylinder(radius=p.cage_screw_dia / 2 + 0.25, height=hub_h + p.roller_len + 0.01,
                      align=_MIN, mode=Mode.SUBTRACT)
-        # flat-head COUNTERSINKS on the underside (z=0): cone wide at the face, narrowing up
+        # flat-head countersinks on the hub bottom (z=0)
         for count, start in [(p.n_planets, 0.0), (p.n_cage_posts, p.post_angle_start)]:
             with PolarLocations(p.carrier_radius, count, start_angle=start):
                 Cone(bottom_radius=p.cage_screw_head_dia / 2, top_radius=p.cage_screw_dia / 2,
@@ -658,8 +685,11 @@ def make_bearing(od, idia, w):
 
 def bearing_placements(p: InvParams):
     return [
-        ("brg_input_7x13", p.in_bearing_od, p.in_bearing_id, p.in_bearing_w,
-         (0, 0, p.in_bearing_floor_z)),
+        # nested at the input: 30x37 (carrier hub) + 7x13 (sun) on the same plane
+        ("brg_lower_30x37", p.out_bearing_od, p.out_bearing_id, p.out_bearing_w,
+         (0, 0, p.lower_bearing_floor_z)),
+        ("brg_sun_7x13", p.in_bearing_od, p.in_bearing_id, p.in_bearing_w,
+         (0, 0, p.lower_bearing_floor_z)),
         ("brg_output_30x37", p.out_bearing_od, p.out_bearing_id, p.out_bearing_w,
          (0, 0, p.out_bearing_floor_z)),
     ]
@@ -685,7 +715,7 @@ def build(p: InvParams, outdir: Path):
     asm = [Pos(0, 0, 0) * parts["base"]]
     asm.append(Pos(0, 0, p.flange_t) * parts["body"])
     asm.append(Pos(0, 0, p.sun_z) * parts["sun"])
-    asm.append(Pos(0, 0, p.carrier_bot_z) * parts["carrier_bottom"])
+    asm.append(Pos(0, 0, p.lower_bearing_floor_z) * parts["carrier_bottom"])
     for i in range(p.n_planets):
         ang = 2 * pi * i / p.n_planets
         x, y = p.carrier_radius * cos(ang), p.carrier_radius * sin(ang)
@@ -735,7 +765,8 @@ def report(p: InvParams):
           f"in carrier_top (no printed threads)")
     print(f"carrier ........... 2-plate cage: {p.n_planets} planets on Ø{p.roller_dia:.0f}x{p.roller_len:.1f} rollers "
           f"+ {p.n_cage_posts} INTEGRAL standoff posts between them, all M{p.cage_screw_dia:.0f} clamped")
-    print(f"bearings .......... input 7x13x4 (sun) + output 30x37x4 (carrier hub)")
+    print(f"bearings .......... carrier STRADDLES two 30x37 (lower in base, upper in cap); the sun "
+          f"rides a 7x13 NESTED in the lower one -> 3 bearings, both carrier ends supported")
     print(f"envelope .......... Ø{p.case_od:.1f} tube, {p.housing_h:.1f}mm body (vendor-matched)")
 
 
