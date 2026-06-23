@@ -33,10 +33,10 @@
     <!-- fixed shell: separate NEMA base + ring body + end cap -->
     <geom type="mesh" mesh="base" material="case" contype="0" conaffinity="0"/>
     <geom type="mesh" mesh="body" pos="0 0 0.008" material="case" contype="0" conaffinity="0"/>
-    <geom type="mesh" mesh="cap" pos="0 0 0.0245" material="case" contype="0" conaffinity="0"/>
+    <geom type="mesh" mesh="cap" pos="0 0 0.021" material="case" contype="0" conaffinity="0"/>
 
     <!-- sun input: spins ratio x about the main axis -->
-    <body name="sun_body" pos="0 0 0.003">
+    <body name="sun_body" pos="0 0 0.00295">
       <joint name="joint_sun" type="hinge" axis="0 0 1"/>
       <geom type="mesh" mesh="sun" material="sun" contype="0" conaffinity="0"/>
     </body>
@@ -44,20 +44,20 @@
     <!-- output carrier cage: 1x slow output; hub, planets and the shaft co-rotate -->
     <body name="carrier_body" pos="0 0 0">
       <joint name="joint_out" type="hinge" axis="0 0 1"/>
-      <geom type="mesh" mesh="carrier_bottom" material="carr" pos="0 0 0.003" contype="0" conaffinity="0"/>
-      <geom type="mesh" mesh="carrier_top"    material="carr" pos="0 0 0.017" contype="0" conaffinity="0"/>
-      <geom type="box" pos="0.011 0 0.0245" size="0.004 0.0012 0.0012" material="mark" contype="0" conaffinity="0"/>
+      <geom type="mesh" mesh="carrier_bottom" material="carr" pos="0 0 0.00295" contype="0" conaffinity="0"/>
+      <geom type="mesh" mesh="carrier_top"    material="carr" pos="0 0 0.018" contype="0" conaffinity="0"/>
+      <geom type="box" pos="0.011 0 0.023" size="0.004 0.0012 0.0012" material="mark" contype="0" conaffinity="0"/>
 
       <!-- 3 planets ride their rollers on the carrier (gear plane z = gear_z = 0.0105) -->
-      <body name="planet0_body" pos="0.010155 0 0.0105">
+      <body name="planet0_body" pos="0.010155 0 0.0115">
         <joint name="joint_planet0" type="hinge" axis="0 0 1"/>
         <geom type="mesh" mesh="planet" material="plan" contype="0" conaffinity="0"/>
       </body>
-      <body name="planet1_body" pos="-0.0050775 0.0087911 0.0105">
+      <body name="planet1_body" pos="-0.0050775 0.0087911 0.0115">
         <joint name="joint_planet1" type="hinge" axis="0 0 1"/>
         <geom type="mesh" mesh="planet" material="plan" contype="0" conaffinity="0"/>
       </body>
-      <body name="planet2_body" pos="-0.0050775 -0.0087911 0.0105">
+      <body name="planet2_body" pos="-0.0050775 -0.0087911 0.0115">
         <joint name="joint_planet2" type="hinge" axis="0 0 1"/>
         <geom type="mesh" mesh="planet" material="plan" contype="0" conaffinity="0"/>
       </body>
