@@ -76,7 +76,8 @@ class InvParams:
     motor_shaft_dia: float = 5.0    # NEMA-17 stepper shaft
     shaft_press_fit: float = 0.05   # radial interference: bore = shaft - 2*this
     sun_journal_dia: float = 7.0    # journal below the gear, rides the 7x13 bore
-    sun_journal_h: float = 5.0      # journal length engaged below the gear plane
+    # sun_journal_h is DERIVED: it must reach from the 7x13 seat up to the gear plane so the
+    # sun gear lands coplanar with the planets (see property below).
 
     # --- Bearings (vendor kit) -------------------------------------------------
     in_bearing_id: float = 7.0      # 7x13x4 on the sun journal
@@ -129,6 +130,7 @@ class InvParams:
     case_bolt_head_h: float = 2.8   # button-head counterbore in the base underside
     case_bolt_len: float = 20.0     # off-the-shelf through-bolt length (under head) to target
     n_case_bolts: int = 4
+    case_register_h: float = 2.5    # base->body locating spigot (tongue) height
 
     output_lash_deg: float = 0.25
 
@@ -212,6 +214,16 @@ class InvParams:
         return max(clear_bearing, clear_ring)
 
     @property
+    def register_ir(self) -> float:
+        """Inner radius of the base->body locating tongue (clears the carrier cavity)."""
+        return self.carrier_bore_below_r + 1.0
+
+    @property
+    def register_or(self) -> float:
+        """Outer radius of the locating tongue (stays inboard of the through-bolts)."""
+        return self.case_bolt_r - self.case_bolt_dia / 2 - 1.0
+
+    @property
     def out_plate(self) -> float:
         """Square NEMA-17 end-plate side (holds the 31 mm pattern + case bolts)."""
         nema = self.nema_bolt_spacing / 2 + self.nema_bolt_head_dia / 2 + 1.0
@@ -232,6 +244,12 @@ class InvParams:
     def gear_z(self) -> float:
         """Gear plane = top of the bottom plate."""
         return self.carrier_bot_z + self.carrier_bot_t
+
+    @property
+    def sun_journal_h(self) -> float:
+        """Journal reaches from the 7x13 seat up to the gear plane, so the sun gear lands
+        COPLANAR with the planets (placed at sun_z = in_bearing_floor_z)."""
+        return self.gear_z - self.in_bearing_floor_z
 
     @property
     def carrier_top_z(self) -> float:
@@ -320,6 +338,21 @@ def validate(p: InvParams) -> bool:
           f"{bore_wall:.2f} mm around Ø{p.motor_shaft_dia} shaft (press {p.shaft_press_fit*1000:.0f} µm)")
     check("sun journal rides 7x13 bore", abs(p.sun_journal_dia - p.in_bearing_id) < 0.01,
           f"journal Ø{p.sun_journal_dia} == bearing bore Ø{p.in_bearing_id}")
+    # sun gear must land COPLANAR with the planets (journal reaches the gear plane)
+    sun_gear_base = p.sun_z + p.sun_journal_h
+    check("sun gear coplanar with planets", abs(sun_gear_base - p.gear_z) < 0.01,
+          f"sun gear base z {sun_gear_base:.2f} == planet plane z {p.gear_z:.2f}")
+    # journal spans the full 7x13 width (so the bearing is fully engaged)
+    check("sun journal spans the 7x13", p.sun_z <= p.in_bearing_floor_z + 0.01
+          and p.sun_z + p.sun_journal_h >= p.flange_t,
+          f"journal z {p.sun_z:.1f}..{p.sun_z + p.sun_journal_h:.1f} covers bearing z "
+          f"{p.in_bearing_floor_z:.1f}..{p.flange_t:.1f}")
+    # base->body locating tongue: clears the cavity inboard and the through-bolts outboard
+    check("register tongue clears cavity + bolts",
+          p.register_ir > p.carrier_bore_below_r and
+          p.register_or < p.case_bolt_r - p.case_bolt_dia / 2 - 0.3,
+          f"tongue R {p.register_ir:.1f}..{p.register_or:.1f} between cavity R "
+          f"{p.carrier_bore_below_r:.1f} and bolt-inner R {p.case_bolt_r - p.case_bolt_dia/2:.1f}")
 
     # input bearing seats in the flange above the pilot recess
     check("7x13 seats on flange ledge", p.in_bearing_w + p.in_pilot_depth + 0.5 <= p.flange_t,
@@ -438,6 +471,13 @@ def make_base(p: InvParams):
             with Locations((x, y, ft - cs)):
                 Cone(bottom_radius=bolt_r, top_radius=head_r, height=cs + 0.01,
                      align=_MIN, mode=Mode.SUBTRACT)
+        # locating TONGUE: an annular spigot rising from the base top into the body groove,
+        # so the base (and the lower bearing it carries) seats CONCENTRIC in the body
+        with Locations((0, 0, ft)):
+            Cylinder(radius=p.register_or, height=p.case_register_h, align=_MIN)
+        with Locations((0, 0, ft)):
+            Cylinder(radius=p.register_ir, height=p.case_register_h + 0.01,
+                     align=_MIN, mode=Mode.SUBTRACT)
         # case through-bolts: clearance + button-head counterbore on the UNDERSIDE (flush vs stepper)
         with PolarLocations(p.case_bolt_r, p.n_case_bolts):
             Cylinder(radius=p.case_bolt_dia / 2 + 0.2, height=ft, align=_MIN, mode=Mode.SUBTRACT)
@@ -468,6 +508,10 @@ def make_body(p: InvParams):
         with PolarLocations(p.case_bolt_r, p.n_case_bolts):
             Cylinder(radius=p.case_bolt_dia / 2 + 0.2, height=body_h + 0.02, align=_MIN, mode=Mode.SUBTRACT)
     body = h.part
+    # locating GROOVE in the body bottom that receives the base tongue (concentric register)
+    groove = (Cylinder(radius=p.register_or + 0.2, height=p.case_register_h + 0.1, align=_MIN)
+              - Cylinder(radius=p.register_ir - 0.2, height=p.case_register_h + 0.1, align=_MIN))
+    body = body - groove
     # carve the internal ring teeth at the gear plane (teeth remain integral to the wall)
     ring_neg = (Pos(0, 0, gt / 2) * Cylinder(radius=p.ring_root_r, height=gt)
                 - ring_gear(p.gear_module, p.n_ring, gt, rim=p.ring_rim))
