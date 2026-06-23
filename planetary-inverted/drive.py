@@ -16,7 +16,7 @@ ratio gains the +1 of a carrier output:
   INPUT  : NEMA-17 stepper bolts to the housing flange; its Ø5 shaft PRESS-FITS into
            the sun (no setscrew). The sun's Ø7 journal rides a 7x13x4 in the flange.
   RING   : 48 teeth, built into the fixed housing tube (carved from the wall).
-  CARRIER: two-plate cage straddling 3 planets on Ø5 alu rollers (M3x5x10, kit part);
+  CARRIER: two-plate cage straddling 3 planets that ride directly on the M3 cage screws;
            the OUTPUT-side plate is a Ø30 hub riding a 30x37x4 in the end cap and
            carries the Ø5 output shaft. The big 30x37 gives the output real overhung
            capacity (the vendor used it for the whole rotating body).
@@ -27,7 +27,8 @@ ratio gains the +1 of a carrier output:
 Parts (all printable + the vendor hardware kit): housing (stepper flange + RING +
 input bearing pocket), sun, planet x3, carrier_bottom, carrier_top (hub+shaft),
 cap (NEMA-17 output face + 30x37 pocket).
-Hardware: 1x 7x13x4, 1x 30x37x4, 3x Ø5x10 alu rollers (M3 bore), 3x M3x20 button
+Hardware: 2x 30x37x4 (carrier straddle), 1x 7x13x4 (sun), 6x M3 cage screws (3 planet axles +
+3 posts) into 6 M3 nuts, 4x M3x20 case through-bolts into 4 M3 nuts, 4x M3 stepper-mount button
 head (cage), 4x M3 (stepper mount), 4x M2.5 (cap-to-housing), 4x M3 (output face).
 
 Run with the repo venv:  .venv/bin/python planetary-inverted/drive.py
@@ -61,11 +62,11 @@ class InvParams:
     gear_thickness: float = 6.0     # face width; trimmed so the case stack fits M3x20 hardware
     stage_eta: float = 0.94         # single printed planetary stage
 
-    # --- Planet axles: Ø5 alu rollers (M3x5x10 kit part), clamp the 2-plate cage --
-    roller_dia: float = 5.0         # roller OD the planet rotates on
-    roller_len: float = 6.5         # sets the plate gap (gear_thickness + axial play); cut from Ø5 stock
-    planet_bore_clear: float = 0.20 # planet bore radial clearance over the roller
-    cage_screw_dia: float = 3.0     # M3 down the roller, threads into the top hub
+    # --- Planet axles: the planets ride DIRECTLY on the M3 cage screws (no Ø5 rollers/inserts) --
+    roller_dia: float = 3.0         # axle the planet rotates on = the M3 cage-screw shank
+    roller_len: float = 6.5         # plate gap (gear_thickness + axial play), set by the integral posts
+    planet_bore_clear: float = 0.15 # planet bore radial clearance over the M3 screw (-> Ø3.3 running fit)
+    cage_screw_dia: float = 3.0     # M3: planet axle AND cage clamp, threads into the carrier_top nut
     cage_screw_pilot: float = 2.5   # tap / heat-set pilot in the top hub
     cage_screw_head_dia: float = 6.0  # M3 flat-head OD (sets the countersink mouth)
     n_cage_posts: int = 3           # standoff posts BETWEEN the planets (own screws+spacers)
@@ -382,13 +383,13 @@ def validate(p: InvParams) -> bool:
     cclear = p.ring_inner_tip_r - (p.carrier_top_od / 2 + p.run_clear)
     check("carrier hub clears ring teeth", cclear >= 0.3, f"{cclear:.2f} mm")
 
-    # planet on roller, roller sets the plate gap
+    # planet rides the M3 cage screw; the integral posts set the plate gap
     planet_root_r = p.planet_pcd / 2 - 1.25 * p.gear_module
     rim = planet_root_r - p.planet_bore_dia / 2
-    check("planet rim over roller", rim >= 1.0,
+    check("planet rim over M3 axle", rim >= 1.0,
           f"{rim:.2f} mm (root R {planet_root_r:.2f} - bore R {p.planet_bore_dia/2:.2f})")
     axial = p.roller_len - p.gear_thickness
-    check("roller sets axial play", 0.2 <= axial <= 1.0, f"{axial:.2f} mm gap-vs-gear")
+    check("posts set axial play", 0.2 <= axial <= 1.0, f"{axial:.2f} mm gap-vs-gear")
     # standoff posts (between planets) must clear the adjacent planet tips
     d_post = 2 * p.carrier_radius * sin((pi * p.post_angle_start / 180.0) / 2.0)
     post_clear = d_post - p.planet_tip_dia / 2 - p.cage_post_dia / 2
@@ -545,7 +546,7 @@ def make_sun(p: InvParams):
 
 
 def make_planet(p: InvParams):
-    """Planet gear bored with running clearance over its Ø5 roller axle."""
+    """Planet gear bored Ø3.3 to ride directly on the M3 cage-screw axle (no roller)."""
     return spur_gear(p.gear_module, p.n_planet, p.gear_thickness, bore=p.planet_bore_dia)
 
 
@@ -759,8 +760,8 @@ def report(p: InvParams):
           f"clears the housing {p.carrier_face_clear:.2f}mm -> bearing takes the load")
     print(f"cage fastening .... {p.n_planets + p.n_cage_posts}x M{p.cage_screw_dia:.0f} into CAPTIVE nuts "
           f"in carrier_top (no printed threads)")
-    print(f"carrier ........... 2-plate cage: {p.n_planets} planets on Ø{p.roller_dia:.0f}x{p.roller_len:.1f} rollers "
-          f"+ {p.n_cage_posts} INTEGRAL standoff posts between them, all M{p.cage_screw_dia:.0f} clamped")
+    print(f"carrier ........... 2-plate cage: {p.n_planets} planets ride DIRECTLY on the M{p.cage_screw_dia:.0f} "
+          f"cage screws (Ø{p.planet_bore_dia:.1f} bore) + {p.n_cage_posts} INTEGRAL standoff posts set the gap")
     print(f"bearings .......... carrier STRADDLES two 30x37 (lower in base, upper in cap); the sun "
           f"rides a 7x13 NESTED in the lower one -> 3 bearings, both carrier ends supported")
     print(f"envelope .......... Ø{p.case_od:.1f} tube, {p.housing_h:.1f}mm body (vendor-matched)")
