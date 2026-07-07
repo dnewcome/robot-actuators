@@ -14,6 +14,9 @@ help:
 	@echo "  make planetary-inverted     build the inverted carrier-out planetary (NEMA-17 in/out)"
 	@echo "  make sim-planetary-inverted build + open its kinematic MuJoCo viewer"
 	@echo "  make cycloidal              build the compound planetary+cycloidal drive"
+	@echo "  make motor                  EM FEA: mesh + flux-density field of the torque motor"
+	@echo "  make motor-curves           EM FEA: + cogging & Kt sweeps (slower)"
+	@echo "  make linear                 piezo-hydraulic linear actuator sizing + F-v envelope"
 
 # --- centre-output cycloidal ------------------------------------------------
 .PHONY: cycloidal-center
@@ -46,3 +49,17 @@ sim-planetary-inverted: planetary-inverted
 .PHONY: cycloidal
 cycloidal:
 	$(PY) cycloidal/drive.py
+
+# --- custom torque-motor electromagnetic FEA (gmsh + scikit-fem) ------------
+.PHONY: motor
+motor:
+	$(PY) motor/fea.py
+
+.PHONY: motor-curves
+motor-curves:
+	$(PY) motor/fea.py curves
+
+# --- piezo-hydraulic linear actuator (first-order sizing model) -------------
+.PHONY: linear
+linear:
+	$(PY) linear/actuator.py
