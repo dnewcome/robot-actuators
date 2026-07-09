@@ -28,6 +28,7 @@ help:
 	@echo "  make corexy                 CoreXY proof: draw-wire loop cancels belt backlash/stretch"
 	@echo "  make pcb-motor              axial-flux PCB-stator motor model + reduction-need calculator"
 	@echo "  make pcb-motor-fea          2D unrolled magnetostatic FEA cross-check of the air-gap flux"
+	@echo "  make pcb-motor-benchmark    calibrate the motor model vs a measured PCB motor (Wang 2025)"
 
 # --- centre-output cycloidal ------------------------------------------------
 .PHONY: cycloidal-center
@@ -122,3 +123,7 @@ pcb-motor:
 .PHONY: pcb-motor-fea
 pcb-motor-fea:
 	$(PY) pcb-motor/fea.py
+
+.PHONY: pcb-motor-benchmark
+pcb-motor-benchmark:
+	$(PY) pcb-motor/benchmark.py

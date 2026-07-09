@@ -53,7 +53,8 @@ class PCBMotorParams:
     trace_w_mm: float = 0.15      # trace width
     trace_gap_mm: float = 0.15    # trace-to-trace gap
     k_pack: float = 0.6           # spiral packing efficiency (turns realised vs radial space)
-    k_w: float = 0.35             # winding/alignment factor (calibrate vs a real motor)
+    k_w: float = 0.43             # lumped winding/alignment/packing factor — CALIBRATED against
+                                  #   the invariant Km of Wang 2025 (arXiv 2509.23561); see benchmark.py
 
     # --- rotor magnets ---------------------------------------------------------
     n_poles: int = 14             # rotor pole count (12N14P-ish)
