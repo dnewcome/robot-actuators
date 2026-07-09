@@ -24,6 +24,8 @@ help:
 	@echo "  make rail-servo             control proof: TT gearmotor + cap scale cancels backlash"
 	@echo "  make rail-cad               build the linear rail servo CAD (STEP/STL parts)"
 	@echo "  make sim-rail               build CAD + open its kinematic MuJoCo viewer"
+	@echo "  make drawwire               draw-wire (tape-measure) encoder resolution model"
+	@echo "  make corexy                 CoreXY proof: draw-wire loop cancels belt backlash/stretch"
 
 # --- centre-output cycloidal ------------------------------------------------
 .PHONY: cycloidal-center
@@ -100,3 +102,12 @@ rail-cad:
 .PHONY: sim-rail
 sim-rail: rail-cad
 	$(PY) linear-rail-servo/sim.py $(REV)
+
+# --- CoreXY stage on TT motors, closed on draw-wire (string-pot) encoders -----
+.PHONY: drawwire
+drawwire:
+	$(PY) corexy/drawwire.py
+
+.PHONY: corexy
+corexy:
+	$(PY) corexy/corexy.py
