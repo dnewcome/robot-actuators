@@ -27,6 +27,7 @@ help:
 	@echo "  make drawwire               draw-wire (tape-measure) encoder resolution model"
 	@echo "  make corexy                 CoreXY proof: draw-wire loop cancels belt backlash/stretch"
 	@echo "  make pcb-motor              axial-flux PCB-stator motor model + reduction-need calculator"
+	@echo "  make pcb-motor-fea          2D unrolled magnetostatic FEA cross-check of the air-gap flux"
 
 # --- centre-output cycloidal ------------------------------------------------
 .PHONY: cycloidal-center
@@ -117,3 +118,7 @@ corexy:
 .PHONY: pcb-motor
 pcb-motor:
 	$(PY) pcb-motor/motor.py
+
+.PHONY: pcb-motor-fea
+pcb-motor-fea:
+	$(PY) pcb-motor/fea.py
