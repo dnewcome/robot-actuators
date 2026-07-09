@@ -13,10 +13,17 @@ help:
 	@echo "  make sim-planetary          build + open its kinematic MuJoCo viewer"
 	@echo "  make planetary-inverted     build the inverted carrier-out planetary (NEMA-17 in/out)"
 	@echo "  make sim-planetary-inverted build + open its kinematic MuJoCo viewer"
+	@echo "  make cycloidal-2stage       build the two-stage compound cycloidal (body output, yoke)"
+	@echo "  make sim-cycloidal-2stage   build + open its kinematic MuJoCo viewer (121:1)"
 	@echo "  make cycloidal              build the compound planetary+cycloidal drive"
 	@echo "  make motor                  EM FEA: mesh + flux-density field of the torque motor"
 	@echo "  make motor-curves           EM FEA: + cogging & Kt sweeps (slower)"
 	@echo "  make linear                 piezo-hydraulic linear actuator sizing + F-v envelope"
+	@echo "  make linear-eo              add the electroosmotic route + piezo-vs-EO comparison"
+	@echo "  make rail-encoder           capacitive vernier scale (digital-caliper) resolution model"
+	@echo "  make rail-servo             control proof: TT gearmotor + cap scale cancels backlash"
+	@echo "  make rail-cad               build the linear rail servo CAD (STEP/STL parts)"
+	@echo "  make sim-rail               build CAD + open its kinematic MuJoCo viewer"
 
 # --- centre-output cycloidal ------------------------------------------------
 .PHONY: cycloidal-center
@@ -50,6 +57,15 @@ sim-planetary-inverted: planetary-inverted
 cycloidal:
 	$(PY) cycloidal/drive.py
 
+# --- two-stage compound cycloidal (body output, external-yoke straddle) ------
+.PHONY: cycloidal-2stage
+cycloidal-2stage:
+	$(PY) cycloidal-2stage/drive.py
+
+.PHONY: sim-cycloidal-2stage
+sim-cycloidal-2stage: cycloidal-2stage
+	$(PY) cycloidal-2stage/sim.py $(REV)
+
 # --- custom torque-motor electromagnetic FEA (gmsh + scikit-fem) ------------
 .PHONY: motor
 motor:
@@ -63,3 +79,24 @@ motor-curves:
 .PHONY: linear
 linear:
 	$(PY) linear/actuator.py
+
+.PHONY: linear-eo
+linear-eo:
+	$(PY) linear/actuator.py eo
+
+# --- linear rail servo: crappy TT gearmotor + capacitive vernier scale -------
+.PHONY: rail-encoder
+rail-encoder:
+	$(PY) linear-rail-servo/encoder.py
+
+.PHONY: rail-servo
+rail-servo:
+	$(PY) linear-rail-servo/servo.py
+
+.PHONY: rail-cad
+rail-cad:
+	$(PY) linear-rail-servo/rail.py
+
+.PHONY: sim-rail
+sim-rail: rail-cad
+	$(PY) linear-rail-servo/sim.py $(REV)

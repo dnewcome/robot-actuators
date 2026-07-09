@@ -1,0 +1,67 @@
+<mujoco model="linear_rail_servo_viewer">
+  <!-- Linear rail servo, driven KINEMATICALLY by sim.py. The carriage slides along the
+       rods; the two GT2 pulleys spin at theta = x / r_pulley so the belt tracks the
+       carriage. The green capacitive SCALE runs the length of the rail (the encoder in
+       the rail); the slider PCB rides just above it across the 0.25 mm air gap.
+       Parts sit on rail.py's datum (z=0 at the base underside). mm -> m via scale. -->
+
+  <compiler meshdir="out" angle="degree" autolimits="true"/>
+  <option gravity="0 0 0"/>
+  <visual>
+    <global offwidth="1100" offheight="520"/>
+  </visual>
+
+  <asset>
+    <mesh name="base"         file="base.stl"         scale="0.001 0.001 0.001"/>
+    <mesh name="end_block"    file="end_block.stl"    scale="0.001 0.001 0.001"/>
+    <mesh name="rod"          file="rod.stl"          scale="0.001 0.001 0.001"/>
+    <mesh name="carriage"     file="carriage.stl"     scale="0.001 0.001 0.001"/>
+    <mesh name="drive_pulley" file="drive_pulley.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="idler_pulley" file="idler_pulley.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="belt"         file="belt.stl"         scale="0.001 0.001 0.001"/>
+    <mesh name="scale_pcb"    file="scale_pcb.stl"    scale="0.001 0.001 0.001"/>
+    <mesh name="slider_pcb"   file="slider_pcb.stl"   scale="0.001 0.001 0.001"/>
+    <mesh name="motor"        file="motor.stl"        scale="0.001 0.001 0.001"/>
+    <material name="frame"  rgba="0.72 0.74 0.77 1"/>     <!-- base + blocks -->
+    <material name="rod"    rgba="0.85 0.86 0.88 1"/>
+    <material name="carr"   rgba="0.30 0.47 0.78 1"/>     <!-- carriage: blue  -->
+    <material name="pulley" rgba="0.15 0.15 0.17 1"/>
+    <material name="belt"   rgba="0.10 0.10 0.11 1"/>
+    <material name="scale"  rgba="0.15 0.65 0.35 1"/>     <!-- cap scale: PCB green -->
+    <material name="slider" rgba="0.85 0.72 0.20 1"/>     <!-- slider PCB: gold -->
+    <material name="motor"  rgba="0.90 0.80 0.15 1"/>     <!-- TT: yellow -->
+  </asset>
+
+  <worldbody>
+    <light pos="0.13 -0.15 0.30" dir="0 0.4 -1"/>
+    <light pos="0.02 0.10 0.25" dir="0.2 -0.4 -1" diffuse="0.4 0.4 0.4"/>
+    <camera name="iso" pos="0.135 -0.235 0.150" xyaxes="1 0 0 0 0.55 0.83"/>
+
+    <!-- static frame: base, two end blocks, two rods, the cap scale, the motor -->
+    <geom type="mesh" mesh="base" material="frame" contype="0" conaffinity="0"/>
+    <geom type="mesh" mesh="end_block" material="frame" pos="0.011 0 0.006" contype="0" conaffinity="0"/>
+    <geom type="mesh" mesh="end_block" material="frame" pos="0.245 0 0.006" contype="0" conaffinity="0"/>
+    <geom type="mesh" mesh="rod" material="rod" pos="0.128 0.022 0.024" contype="0" conaffinity="0"/>
+    <geom type="mesh" mesh="rod" material="rod" pos="0.128 -0.022 0.024" contype="0" conaffinity="0"/>
+    <geom type="mesh" mesh="scale_pcb" material="scale" pos="0.040 0 0.006" contype="0" conaffinity="0"/>
+    <geom type="mesh" mesh="belt" material="belt" pos="0 0 0.0205" contype="0" conaffinity="0"/>
+    <geom type="mesh" mesh="motor" material="motor" pos="0.028 0 -0.0026" contype="0" conaffinity="0"/>
+
+    <!-- drive pulley: spins about Z at theta = x / r_pulley -->
+    <body name="drive_body" pos="0.028 0 0.019">
+      <joint name="joint_drive" type="hinge" axis="0 0 1"/>
+      <geom type="mesh" mesh="drive_pulley" material="pulley" contype="0" conaffinity="0"/>
+    </body>
+    <body name="idler_body" pos="0.228 0 0.019">
+      <joint name="joint_idler" type="hinge" axis="0 0 1"/>
+      <geom type="mesh" mesh="idler_pulley" material="pulley" contype="0" conaffinity="0"/>
+    </body>
+
+    <!-- carriage: slides along X (the rail axis); slider PCB rides with it over the scale -->
+    <body name="carriage_body" pos="0.053 0 0">
+      <joint name="joint_carriage" type="slide" axis="1 0 0" range="0 0.15"/>
+      <geom type="mesh" mesh="carriage" material="carr" contype="0" conaffinity="0"/>
+      <geom type="mesh" mesh="slider_pcb" material="slider" pos="0 0 0.00625" contype="0" conaffinity="0"/>
+    </body>
+  </worldbody>
+</mujoco>
