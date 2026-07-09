@@ -1,0 +1,79 @@
+<mujoco model="flex_gimbal_viewer">
+  <!-- 2-DOF tendon-driven gimbal, driven KINEMATICALLY by sim.py. The X-hinge ring carries the
+       Y-hinge platform (a real cross-trunnion gimbal); 3 spatial tendons run from the platform
+       ears to the 3 capstan spools, which spin to wind/unwind as the platform tilts. Static base,
+       pivot post, spring, motors. Parts on cad.py's datum (pivot at z=30 mm). mm -> m via scale. -->
+
+  <compiler meshdir="out" angle="degree" autolimits="true"/>
+  <option gravity="0 0 0"/>
+  <visual>
+    <global offwidth="960" offheight="720"/>
+  </visual>
+
+  <asset>
+    <mesh name="base"        file="base.stl"        scale="0.001 0.001 0.001"/>
+    <mesh name="pivot_post"  file="pivot_post.stl"  scale="0.001 0.001 0.001"/>
+    <mesh name="gimbal_ring" file="gimbal_ring.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="platform"    file="platform.stl"    scale="0.001 0.001 0.001"/>
+    <mesh name="capstan"     file="capstan.stl"     scale="0.001 0.001 0.001"/>
+    <mesh name="motor"       file="motor.stl"       scale="0.001 0.001 0.001"/>
+    <mesh name="spring"      file="spring.stl"      scale="0.001 0.001 0.001"/>
+    <material name="frame"  rgba="0.72 0.74 0.77 1"/>
+    <material name="post"   rgba="0.55 0.57 0.60 1"/>
+    <material name="ring"   rgba="0.85 0.55 0.20 1"/>     <!-- gimbal ring: orange   -->
+    <material name="plat"   rgba="0.30 0.47 0.78 0.42"/>  <!-- platform: translucent blue -->
+    <material name="ear"    rgba="0.30 0.47 0.78 1"/>
+    <material name="capst"  rgba="0.15 0.15 0.17 1"/>
+    <material name="motor"  rgba="0.90 0.80 0.15 1"/>     <!-- TT-ish: yellow          -->
+    <material name="spring" rgba="0.80 0.55 0.35 1"/>
+  </asset>
+
+  <worldbody>
+    <light pos="0.05 -0.05 0.12" dir="-0.3 0.3 -1"/>
+    <camera name="iso" pos="0.058 -0.058 0.070" xyaxes="0.7 0.7 0 -0.42 0.42 0.84"/>
+
+    <!-- static frame -->
+    <geom type="mesh" mesh="base" material="frame" contype="0" conaffinity="0"/>
+    <geom type="mesh" mesh="pivot_post" material="post" contype="0" conaffinity="0"/>
+    <geom type="mesh" mesh="spring" material="spring" pos="0 0 0.003" contype="0" conaffinity="0"/>
+    <geom type="mesh" mesh="motor" material="motor" pos="0.012 0 -0.012" contype="0" conaffinity="0"/>
+    <geom type="mesh" mesh="motor" material="motor" pos="-0.006 0.01039 -0.012" contype="0" conaffinity="0"/>
+    <geom type="mesh" mesh="motor" material="motor" pos="-0.006 -0.01039 -0.012" contype="0" conaffinity="0"/>
+
+    <!-- 3 capstan spools, each spins about Z (wound by sim.py) -->
+    <body name="cap0_body" pos="0.012 0 0.011">
+      <joint name="joint_cap0" type="hinge" axis="0 0 1"/>
+      <geom type="mesh" mesh="capstan" material="capst" contype="0" conaffinity="0"/>
+      <site name="cap0" pos="0 0 0.010" size="0.0008"/>
+    </body>
+    <body name="cap1_body" pos="-0.006 0.01039 0.011">
+      <joint name="joint_cap1" type="hinge" axis="0 0 1"/>
+      <geom type="mesh" mesh="capstan" material="capst" contype="0" conaffinity="0"/>
+      <site name="cap1" pos="0 0 0.010" size="0.0008"/>
+    </body>
+    <body name="cap2_body" pos="-0.006 -0.01039 0.011">
+      <joint name="joint_cap2" type="hinge" axis="0 0 1"/>
+      <geom type="mesh" mesh="capstan" material="capst" contype="0" conaffinity="0"/>
+      <site name="cap2" pos="0 0 0.010" size="0.0008"/>
+    </body>
+
+    <!-- gimbal: ring tilts about X, platform tilts about Y (cross-trunnion) -->
+    <body name="ring_body" pos="0 0 0.030">
+      <joint name="joint_x" type="hinge" axis="1 0 0"/>
+      <geom type="mesh" mesh="gimbal_ring" material="ring" contype="0" conaffinity="0"/>
+      <body name="platform_body" pos="0 0 0">
+        <joint name="joint_y" type="hinge" axis="0 1 0"/>
+        <geom type="mesh" mesh="platform" material="plat" pos="0 0 0.007" contype="0" conaffinity="0"/>
+        <site name="ear0" pos="0.012 0 0.011" size="0.0008"/>
+        <site name="ear1" pos="-0.006 0.01039 0.011" size="0.0008"/>
+        <site name="ear2" pos="-0.006 -0.01039 0.011" size="0.0008"/>
+      </body>
+    </body>
+  </worldbody>
+
+  <tendon>
+    <spatial name="t0" width="0.0006" rgba="0.95 0.95 0.95 1"><site site="ear0"/><site site="cap0"/></spatial>
+    <spatial name="t1" width="0.0006" rgba="0.95 0.95 0.95 1"><site site="ear1"/><site site="cap1"/></spatial>
+    <spatial name="t2" width="0.0006" rgba="0.95 0.95 0.95 1"><site site="ear2"/><site site="cap2"/></spatial>
+  </tendon>
+</mujoco>

@@ -29,6 +29,9 @@ help:
 	@echo "  make pcb-motor              axial-flux PCB-stator motor model + reduction-need calculator"
 	@echo "  make pcb-motor-fea          2D unrolled magnetostatic FEA cross-check of the air-gap flux"
 	@echo "  make pcb-motor-benchmark    calibrate the motor model vs a measured PCB motor (Wang 2025)"
+	@echo "  make flex                   2-DOF tendon-gimbal statics: 3 capstans, tensions, workspace"
+	@echo "  make flex-cad               build the tendon-gimbal CAD (STEP/STL parts)"
+	@echo "  make sim-flex               build CAD + open its 2-DOF MuJoCo viewer"
 
 # --- centre-output cycloidal ------------------------------------------------
 .PHONY: cycloidal-center
@@ -127,3 +130,16 @@ pcb-motor-fea:
 .PHONY: pcb-motor-benchmark
 pcb-motor-benchmark:
 	$(PY) pcb-motor/benchmark.py
+
+# --- 2-DOF tendon-driven gimbal (3 capstans, sprung center) ------------------
+.PHONY: flex
+flex:
+	$(PY) flex/flex.py
+
+.PHONY: flex-cad
+flex-cad:
+	$(PY) flex/cad.py
+
+.PHONY: sim-flex
+sim-flex: flex-cad
+	$(PY) flex/sim.py $(REV)
