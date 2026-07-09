@@ -1,0 +1,82 @@
+<mujoco model="cycloidal_2stage_viewer">
+  <!-- Two-stage compound-differential cycloidal, driven KINEMATICALLY by sim.py.
+       Translucent grounded base + yoke + the (also translucent) output drum let you
+       see the internals race while the drum barely turns:
+         eccentric (input) : spins 121x about the axis (the fast input)
+         disc1 / disc2     : ride the +E / -E cams (180 deg opposed) -> ORBIT at the
+                             input frequency, each spinning slowly (-1/z1 of input)
+         central disc      : the coupler, spins at -1/z1 of input (threads both discs)
+         output drum       : 1x, the slow body output (ring2) -> u = 121:1 co-rotating
+       Parts sit on drive.py's axial datum (z=0 at the motor face). mm -> m via scale. -->
+
+  <compiler meshdir="out" angle="degree" autolimits="true"/>
+  <option gravity="0 0 0"/>
+  <visual>
+    <global offwidth="900" offheight="480"/>
+  </visual>
+
+  <asset>
+    <mesh name="base"         file="base.stl"         scale="0.001 0.001 0.001"/>
+    <mesh name="eccentric"    file="eccentric.stl"    scale="0.001 0.001 0.001"/>
+    <mesh name="disc1"        file="disc1.stl"        scale="0.001 0.001 0.001"/>
+    <mesh name="disc2"        file="disc2.stl"        scale="0.001 0.001 0.001"/>
+    <mesh name="central_disc" file="central_disc.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="output_drum"  file="output_drum.stl"  scale="0.001 0.001 0.001"/>
+    <mesh name="yoke"         file="yoke.stl"         scale="0.001 0.001 0.001"/>
+    <mesh name="post"         file="post.stl"         scale="0.001 0.001 0.001"/>
+    <material name="ground" rgba="0.70 0.72 0.75 0.12"/>  <!-- base + yoke: translucent -->
+    <material name="post"   rgba="0.20 0.20 0.22 1"/>
+    <material name="drum"   rgba="0.30 0.47 0.78 0.16"/>  <!-- output: tinted, see-through-->
+    <material name="ecc"    rgba="0.95 0.72 0.10 1"/>     <!-- input: bright, opaque      -->
+    <material name="disc1"  rgba="0.20 0.80 0.40 1"/>
+    <material name="disc2"  rgba="0.90 0.55 0.20 1"/>
+    <material name="cd"     rgba="0.56 0.42 0.75 1"/>
+    <material name="mark"   rgba="0.90 0.10 0.10 1"/>
+  </asset>
+
+  <worldbody>
+    <light pos="0.06 -0.06 0.16" dir="-0.4 0.4 -1"/>
+    <camera name="iso" pos="0.066 -0.066 0.055" xyaxes="0.7 0.7 0 -0.42 0.42 0.84"/>
+
+    <!-- grounded structure: base + external yoke + 3 posts -->
+    <geom type="mesh" mesh="base" material="ground" contype="0" conaffinity="0"/>
+    <geom type="mesh" mesh="yoke" material="ground" contype="0" conaffinity="0"/>
+    <geom type="mesh" mesh="post" material="post" pos="0.034 0 0"    contype="0" conaffinity="0"/>
+    <geom type="mesh" mesh="post" material="post" pos="-0.017 0.0294 0" contype="0" conaffinity="0"/>
+    <geom type="mesh" mesh="post" material="post" pos="-0.017 -0.0294 0" contype="0" conaffinity="0"/>
+
+    <!-- eccentric input: spins 121x about the main axis (base at z_nsb = 1 mm) -->
+    <body name="ecc_body" pos="0 0 0.001">
+      <joint name="joint_ecc" type="hinge" axis="0 0 1"/>
+      <geom type="mesh" mesh="eccentric" material="ecc" contype="0" conaffinity="0"/>
+
+      <!-- disc1 rides cam1 (+E): orbits at radius E in the eccentric frame, spins slowly -->
+      <body name="disc1_body" pos="0.0007 0 0.005">
+        <joint name="joint_disc1" type="hinge" axis="0 0 1"/>
+        <geom type="mesh" mesh="disc1" material="disc1" contype="0" conaffinity="0"/>
+        <geom type="box" pos="0.013 0 0.0025" size="0.004 0.001 0.001" material="mark"
+              contype="0" conaffinity="0"/>
+      </body>
+
+      <!-- disc2 rides cam2 (-E), 180 deg opposed for balance -->
+      <body name="disc2_body" pos="-0.0007 0 0.0146">
+        <joint name="joint_disc2" type="hinge" axis="0 0 1"/>
+        <geom type="mesh" mesh="disc2" material="disc2" contype="0" conaffinity="0"/>
+      </body>
+    </body>
+
+    <!-- central disc: the coupler, spins at -1/z1 of the input about the main axis -->
+    <body name="cd_body" pos="0 0 0">
+      <joint name="joint_cd" type="hinge" axis="0 0 1"/>
+      <geom type="mesh" mesh="central_disc" material="cd" contype="0" conaffinity="0"/>
+    </body>
+
+    <!-- output drum (ring2 body): 1x slow output, flange exits the yoke -->
+    <body name="drum_body" pos="0 0 0">
+      <joint name="joint_out" type="hinge" axis="0 0 1"/>
+      <geom type="mesh" mesh="output_drum" material="drum" contype="0" conaffinity="0"/>
+      <geom type="box" pos="0.013 0 0.0341" size="0.005 0.0013 0.0013" material="mark"
+            contype="0" conaffinity="0"/>
+    </body>
+  </worldbody>
+</mujoco>
