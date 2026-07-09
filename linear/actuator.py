@@ -44,6 +44,12 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 OUT = HERE / "out"
 
+# physical constants (SI)
+EPS0 = 8.8541878128e-12   # vacuum permittivity [F/m]
+KB = 1.380649e-23         # Boltzmann [J/K]
+NA = 6.02214076e23        # Avogadro [1/mol]
+QE = 1.602176634e-19      # elementary charge [C]
+
 
 @dataclass
 class PiezoHydraulicParams:
@@ -219,6 +225,149 @@ class PiezoHydraulicParams:
         return all(ok for _, ok, _ in self.checks())
 
 
+@dataclass
+class ElectroosmoticParams:
+    """Electroosmotic pump (EOP) feeding the SAME hydraulic cylinder — the ion route.
+
+    An EOP is a charged nanoporous membrane: an axial field drags the electric
+    double layer (the mobile counter-ion sheath at the pore walls), which viscously
+    drags the bulk fluid. It's the macro 'sodium pump' — a *continuous DC pump with
+    no moving parts and NO VALVES* (so the piezo model's valve-diodicity problem
+    simply vanishes). Its P–Q curve is linear, so it reuses the F–v machinery.
+
+    Thin-EDL (Helmholtz–Smoluchowski) closed form:
+        electroosmotic velocity   u = ε·ζ·E/μ = ε·ζ·V/(μ·L)
+        max pressure (Q=0)        ΔP_max = 8·ε·ζ·V / a²        (∝ 1/pore²)
+        max flow  (ΔP=0)          Q_max  = ψ·A·ε·ζ·V/(μ·L)
+        peak-power efficiency     η = 2·ε²·ζ² / (μ·σ·a²)       (indep. of V, A, L)
+    Small pores buy pressure AND efficiency, but the EDL must stay thin (a ≫ Debye
+    length λ_D), which ties pore size to electrolyte concentration.
+    """
+
+    # --- membrane geometry -----------------------------------------------------
+    membrane_dia_mm: float = 30.0    # frontal diameter of the porous plug
+    porosity: float = 0.35           # open-area fraction ψ
+    thickness_mm: float = 1.0        # membrane thickness L (flow ∝ 1/L)
+    pore_radius_nm: float = 80.0     # effective pore radius a (pressure ∝ 1/a²)
+
+    # --- drive -----------------------------------------------------------------
+    voltage_V: float = 100.0         # applied DC voltage
+    zeta_mV: float = 100.0           # wall zeta potential |ζ| (silica ~ 50-150 mV)
+    reversible_electrodes: bool = True  # Ag/AgCl or redox -> no gas; else electrolysis
+
+    # --- working fluid / electrolyte -------------------------------------------
+    eps_r: float = 80.0              # relative permittivity (water)
+    viscosity: float = 1.0e-3        # μ [Pa·s]
+    conductivity_S_m: float = 0.05   # solution conductivity σ (dilute -> lower loss)
+    electrolyte_conc_mM: float = 1.0 # sets Debye length (EDL thickness)
+    temp_K: float = 298.0
+
+    # --- output cylinder (same as the piezo route, for apples-to-apples) -------
+    out_piston_dia_mm: float = 16.0
+    stroke_mm: float = 40.0
+    seal_eff: float = 0.90
+
+    # ---- derived (SI) ---------------------------------------------------------
+    @property
+    def eps(self) -> float:
+        return self.eps_r * EPS0
+
+    @property
+    def a_pore(self) -> float:
+        return self.pore_radius_nm * 1e-9
+
+    @property
+    def L(self) -> float:
+        return self.thickness_mm * 1e-3
+
+    @property
+    def zeta(self) -> float:
+        return self.zeta_mV * 1e-3
+
+    @property
+    def a_mem(self) -> float:
+        return pi / 4 * (self.membrane_dia_mm * 1e-3) ** 2
+
+    @property
+    def debye_length(self) -> float:
+        c = self.electrolyte_conc_mM              # 1 mM = 1 mol/m^3
+        return (self.eps * KB * self.temp_K / (2 * NA * QE**2 * c)) ** 0.5
+
+    @property
+    def delta_p_max(self) -> float:               # stall pressure [Pa]
+        return 8 * self.eps * self.zeta * self.voltage_V / self.a_pore**2
+
+    @property
+    def q_max(self) -> float:                     # open-circuit flow [m^3/s]
+        return self.porosity * self.a_mem * self.eps * self.zeta * self.voltage_V \
+            / (self.viscosity * self.L)
+
+    @property
+    def current(self) -> float:                   # ionic current [A]
+        return self.conductivity_S_m * self.porosity * self.a_mem * self.voltage_V / self.L
+
+    @property
+    def elec_power(self) -> float:                # electrical input [W]
+        return self.voltage_V * self.current
+
+    @property
+    def efficiency(self) -> float:                # peak-power thermodynamic η
+        return 2 * self.eps**2 * self.zeta**2 / (self.viscosity * self.conductivity_S_m * self.a_pore**2)
+
+    # ---- shared output-cylinder machinery (linear P–Q, like the piezo route) --
+    @property
+    def a_out(self) -> float:
+        return pi / 4 * (self.out_piston_dia_mm * 1e-3) ** 2
+
+    def pump_flow(self, P):
+        return self.q_max * np.maximum(1.0 - P / self.delta_p_max, 0.0)
+
+    @property
+    def stall_force(self) -> float:
+        return self.delta_p_max * self.a_out * self.seal_eff
+
+    @property
+    def noload_speed(self) -> float:
+        return self.q_max / self.a_out
+
+    @property
+    def peak_power(self) -> float:                # hydraulic output [W]
+        return self.stall_force * self.noload_speed / 4.0
+
+    @property
+    def heat_load(self) -> float:                 # ~all electrical input becomes heat
+        return self.elec_power - self.peak_power
+
+    def fv_curve(self, n=80):
+        P = np.linspace(0.0, self.delta_p_max, n)
+        F = P * self.a_out * self.seal_eff
+        v = self.pump_flow(P) / self.a_out
+        return F, v
+
+    # ---- validation -----------------------------------------------------------
+    def checks(self):
+        c = []
+        c.append(("EDL thin: pore ≫ Debye length",
+                  self.a_pore > 5 * self.debye_length,
+                  f"a={self.pore_radius_nm:.0f} nm vs 5·λ_D={5*self.debye_length*1e9:.0f} nm"))
+        c.append(("stall pressure in hydraulic range",
+                  self.delta_p_max < 70e6,
+                  f"{self.delta_p_max/1e6:.1f} MPa"))
+        c.append(("gas managed (reversible electrodes or V<2)",
+                  self.reversible_electrodes or self.voltage_V < 2.0,
+                  f"V={self.voltage_V:.0f} V, reversible={self.reversible_electrodes}"))
+        c.append(("efficiency physical (<1)",
+                  self.efficiency < 1.0,
+                  f"η={self.efficiency*100:.1f}%"))
+        c.append(("porosity in (0,1)", 0 < self.porosity < 1, f"ψ={self.porosity}"))
+        c.append(("stroke positive", self.stroke_mm > 0, f"{self.stroke_mm} mm"))
+        return c
+
+    @property
+    def is_valid(self) -> bool:
+        return all(ok for _, ok, _ in self.checks())
+
+
 def report(p: PiezoHydraulicParams):
     print("  ── piezo-hydraulic linear actuator (first-order sizing) ──")
     print(f"   array            : {p.n_cells} stack-pump cells @ {p.freq_hz:.0f} Hz")
@@ -326,12 +475,136 @@ def render(p: PiezoHydraulicParams, path: Path):
     plt.close(fig)
 
 
+def report_eo(e: ElectroosmoticParams):
+    print("  ── electroosmotic-hydraulic linear actuator (first-order sizing) ──")
+    print(f"   membrane         : Ø{e.membrane_dia_mm} mm, {e.thickness_mm} mm thick, "
+          f"ψ={e.porosity}, pore a={e.pore_radius_nm:.0f} nm")
+    print(f"   drive            : {e.voltage_V:.0f} V, ζ={e.zeta_mV:.0f} mV, "
+          f"{'reversible electrodes' if e.reversible_electrodes else 'GAS-GENERATING electrodes'}")
+    print(f"   fluid            : ε_r={e.eps_r:.0f}, σ={e.conductivity_S_m} S/m, "
+          f"{e.electrolyte_conc_mM} mM  →  λ_D={e.debye_length*1e9:.1f} nm")
+    print("   ---------------------------------------------------------")
+    print(f"   STALL FORCE      ≈ {e.stall_force:.0f} N   ({e.stall_force/9.81:.0f} kgf, "
+          f"ΔP_max={e.delta_p_max/1e6:.1f} MPa)")
+    print(f"   NO-LOAD SPEED    ≈ {e.noload_speed*1e3:.1f} mm/s  "
+          f"({e.q_max*6e7:.0f} mL/min through Ø{e.out_piston_dia_mm})")
+    print(f"   PEAK POWER (hyd) ≈ {e.peak_power:.1f} W")
+    print(f"   ELECTRICAL IN    ≈ {e.elec_power:.0f} W   →  efficiency ≈ {e.efficiency*100:.1f}%")
+    print(f"   HEAT TO DUMP     ≈ {e.heat_load:.0f} W  (thermal management, not force, is the wall)")
+    print(f"   validity         : {'ALL CHECKS PASS' if e.is_valid else 'FAILING CHECKS'}")
+
+
+def render_compare(p: PiezoHydraulicParams, e: ElectroosmoticParams, path: Path):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(2, 2, figsize=(11, 8))
+    fig.suptitle("Piezo-hydraulic vs. electroosmotic-hydraulic — same Ø16 cylinder, robot-joint scale",
+                 fontsize=12, weight="bold")
+
+    # (a) F–v envelopes overlaid --------------------------------------------------
+    a = ax[0, 0]
+    Fp, vp = p.fv_curve()
+    Fe, ve = e.fv_curve()
+    a.fill_between(Fp, 0, vp * 1e3, alpha=0.15, color="tab:blue")
+    a.plot(Fp, vp * 1e3, color="tab:blue", lw=2, label=f"piezo  ({p.peak_power:.0f} W, {p.sys_efficiency*100:.0f}%)")
+    a.fill_between(Fe, 0, ve * 1e3, alpha=0.15, color="tab:orange")
+    a.plot(Fe, ve * 1e3, color="tab:orange", lw=2, label=f"electroosmotic  ({e.peak_power:.1f} W, {e.efficiency*100:.1f}%)")
+    a.set_xlabel("output force  F  [N]")
+    a.set_ylabel("output speed  v  [mm/s]")
+    a.set_title("(a) force–velocity: piezo dominates force & speed", fontsize=10)
+    a.legend(fontsize=8)
+    a.grid(alpha=0.3)
+
+    # (b) EO pressure & flow vs pore radius (the 1/a² pressure lever) --------------
+    a = ax[0, 1]
+    aa = np.geomspace(20, 1000, 80)   # nm
+    dp, qm = [], []
+    for an in aa:
+        q = ElectroosmoticParams(**{**e.__dict__, "pore_radius_nm": float(an)})
+        dp.append(q.delta_p_max / 1e6)
+        qm.append(q.q_max * 6e7)
+    a.loglog(aa, dp, color="tab:purple", lw=2)
+    a.set_xlabel("pore radius  a  [nm]")
+    a.set_ylabel("ΔP_max  [MPa]", color="tab:purple")
+    a.axvspan(20, 5 * e.debye_length * 1e9, alpha=0.12, color="tab:red")
+    a.text(np.sqrt(20 * 5 * e.debye_length * 1e9), dp[0] * 0.5, "EDL\noverlap",
+           ha="center", fontsize=8, color="tab:red")
+    a.axvline(e.pore_radius_nm, color="k", ls=":", lw=1)
+    a2 = a.twinx()
+    a2.loglog(aa, qm, color="tab:green", lw=1.5, ls="--")
+    a2.set_ylabel("Q_max  [mL/min]", color="tab:green")
+    a.set_title("(b) EO lever: small pores buy pressure (∝1/a²), flow ~flat", fontsize=10)
+    a.grid(alpha=0.3, which="both")
+
+    # (c) EO efficiency vs pore radius --------------------------------------------
+    a = ax[1, 0]
+    eff = []
+    for an in aa:
+        q = ElectroosmoticParams(**{**e.__dict__, "pore_radius_nm": float(an)})
+        eff.append(min(q.efficiency, 1.0) * 100)
+    a.loglog(aa, eff, color="tab:orange", lw=2)
+    a.axvspan(20, 5 * e.debye_length * 1e9, alpha=0.12, color="tab:red")
+    a.axvline(e.pore_radius_nm, color="k", ls=":", lw=1)
+    a.set_xlabel("pore radius  a  [nm]")
+    a.set_ylabel("thermodynamic efficiency  [%]")
+    a.set_title("(c) EO efficiency also ∝1/a² — but the EDL floor caps it", fontsize=10)
+    a.grid(alpha=0.3, which="both")
+
+    # (d) power / thermal ledger --------------------------------------------------
+    a = ax[1, 1]
+    labels = ["piezo", "electro-\nosmotic"]
+    hyd = [p.peak_power, e.peak_power]
+    elec = [p.peak_power / max(p.sys_efficiency, 1e-6), e.elec_power]
+    x = np.arange(2)
+    a.bar(x - 0.2, elec, 0.4, color="tab:red", alpha=0.6, label="electrical in")
+    a.bar(x + 0.2, hyd, 0.4, color="tab:blue", alpha=0.8, label="hydraulic out")
+    for i in range(2):
+        a.annotate(f"{elec[i]:.0f} W in", (i - 0.2, elec[i]), ha="center",
+                   va="bottom", fontsize=8)
+        a.annotate(f"{hyd[i]:.1f} W out", (i + 0.2, hyd[i]), ha="center",
+                   va="bottom", fontsize=8)
+    a.set_xticks(x)
+    a.set_xticklabels(labels)
+    a.set_ylabel("power  [W]")
+    a.set_title("(d) the EO price: ~97% of input is heat", fontsize=10)
+    a.legend(fontsize=8)
+    a.grid(alpha=0.3, axis="y")
+
+    fig.tight_layout(rect=(0, 0, 1, 0.96))
+    OUT.mkdir(exist_ok=True)
+    fig.savefig(path, dpi=110)
+    plt.close(fig)
+
+
 if __name__ == "__main__":
-    p = PiezoHydraulicParams()
-    print("Piezo-hydraulic linear actuator — robot-joint sizing\n")
-    report(p)
-    print("\n  validation:")
-    for name, ok, detail in p.checks():
-        print(f"    [{'ok' if ok else 'XX'}] {name:44s} {detail}")
-    render(p, OUT / "envelope.png")
-    print(f"\n  wrote {OUT/'envelope.png'}")
+    import sys
+    mode = sys.argv[1] if len(sys.argv) > 1 else "piezo"
+
+    if mode in ("eo", "compare"):
+        p = PiezoHydraulicParams()
+        e = ElectroosmoticParams()
+        print("Electroosmotic vs piezo-hydraulic linear actuator — robot-joint scale\n")
+        report_eo(e)
+        print("\n  validation:")
+        for name, ok, detail in e.checks():
+            print(f"    [{'ok' if ok else 'XX'}] {name:44s} {detail}")
+        print(f"\n  head-to-head (same Ø{e.out_piston_dia_mm} cylinder):")
+        print(f"    force   piezo {p.stall_force:.0f} N   vs  EO {e.stall_force:.0f} N   "
+              f"({p.stall_force/e.stall_force:.1f}× piezo)")
+        print(f"    speed   piezo {p.noload_speed*1e3:.0f} mm/s vs EO {e.noload_speed*1e3:.1f} mm/s  "
+              f"({p.noload_speed/e.noload_speed:.1f}× piezo)")
+        print(f"    power   piezo {p.peak_power:.0f} W   vs  EO {e.peak_power:.1f} W")
+        print(f"    but EO has ZERO moving parts / no valves, and dumps {e.heat_load:.0f} W of heat")
+        render_compare(p, e, OUT / "compare.png")
+        print(f"\n  wrote {OUT/'compare.png'}")
+    else:
+        p = PiezoHydraulicParams()
+        print("Piezo-hydraulic linear actuator — robot-joint sizing\n")
+        report(p)
+        print("\n  validation:")
+        for name, ok, detail in p.checks():
+            print(f"    [{'ok' if ok else 'XX'}] {name:44s} {detail}")
+        render(p, OUT / "envelope.png")
+        print(f"\n  wrote {OUT/'envelope.png'}")
