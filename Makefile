@@ -26,6 +26,7 @@ help:
 	@echo "  make sim-rail               build CAD + open its kinematic MuJoCo viewer"
 	@echo "  make drawwire               draw-wire (tape-measure) encoder resolution model"
 	@echo "  make corexy                 CoreXY proof: draw-wire loop cancels belt backlash/stretch"
+	@echo "  make pcb-motor              axial-flux PCB-stator motor model + reduction-need calculator"
 
 # --- centre-output cycloidal ------------------------------------------------
 .PHONY: cycloidal-center
@@ -111,3 +112,8 @@ drawwire:
 .PHONY: corexy
 corexy:
 	$(PY) corexy/corexy.py
+
+# --- axial-flux PCB-stator motor (analytical model + reduction calculator) ----
+.PHONY: pcb-motor
+pcb-motor:
+	$(PY) pcb-motor/motor.py
