@@ -32,6 +32,9 @@ help:
 	@echo "  make flex                   2-DOF tendon-gimbal statics: 3 capstans, tensions, workspace"
 	@echo "  make flex-cad               build the tendon-gimbal CAD (STEP/STL parts)"
 	@echo "  make sim-flex               build CAD + open its 2-DOF MuJoCo viewer"
+	@echo "  make tendril                servo-driven TPU continuum finger: curl/force statics"
+	@echo "  make tendril-cad            build the tendril CAD (TPU finger + PLA servo mount)"
+	@echo "  make sim-tendril            build CAD + open its curling MuJoCo viewer"
 
 # --- centre-output cycloidal ------------------------------------------------
 .PHONY: cycloidal-center
@@ -143,3 +146,16 @@ flex-cad:
 .PHONY: sim-flex
 sim-flex: flex-cad
 	$(PY) flex/sim.py $(REV)
+
+# --- servo-driven continuum tendril (1 hobby servo, antagonistic strings) ------
+.PHONY: tendril
+tendril:
+	$(PY) tendril/tendril.py
+
+.PHONY: tendril-cad
+tendril-cad:
+	$(PY) tendril/cad.py
+
+.PHONY: sim-tendril
+sim-tendril: tendril-cad
+	$(PY) tendril/sim.py $(REV)
