@@ -1,12 +1,11 @@
 """
-Kinematic MuJoCo viewer for the servo-driven continuum tendril.
+Kinematic MuJoCo viewer for the segmented servo-driven tendril.
 
-The rigid parts (PLA mount, MG996R body, horn) load as the exported CAD meshes. The flexible TPU
-finger genuinely DEFORMS, so it can't be a rigid STL — it's modelled as a tapered chain of hinge
-segments driven to the exact curl shape κ(s) from tendril.py. The horn spins and two drive strings
-run from the horn holes, through the deck guides, into the finger base — so you see: horn turns →
-strings pull → finger curls. The viewer generates its own model (tendril/viewer.xml) each run so the
-segment taper always matches TendrilParams.
+Rigid parts (PLA mount, MG996R body, horn) load as the exported CAD meshes. The flexible finger is
+a chain of RIGID VERTEBRA boxes joined by hinges at the spine gaps — the real mechanism — driven to
+the per-joint bend from tendril.py. The servo shaft runs ACROSS the finger axis, so the horn spins
+in the bending plane and the two drive strings drop straight down onto it (no 90° cable bend). The
+viewer generates its own model (tendril/viewer.xml) each run so the segment layout matches params.
 
     ../.venv/bin/python tendril/sim.py            # interactive curl sweep (± usable range)
     ../.venv/bin/python tendril/sim.py 0.4        # faster
@@ -29,103 +28,84 @@ HERE = Path(__file__).resolve().parent
 OUT = HERE / "out"
 P = TendrilParams()
 C = Cad(P)
-N_SEG = 16                       # chain segments for the flexible finger
-
-
-def _seg_dims():
-    """Per-segment (thickness, width) half-sizes [m] at the arc midpoints."""
-    seg_len = P.L / N_SEG
-    dims = []
-    for i in range(N_SEG):
-        s_mid = (i + 0.5) * seg_len
-        dims.append((P.t(s_mid) / 2, P.w(s_mid) / 2, seg_len / 2))
-    return seg_len, dims
 
 
 def build_xml():
-    """Generate the viewer model (rigid meshes + tapered finger chain) and write viewer.xml."""
-    seg_len, dims = _seg_dims()
+    """Generate the viewer model (rigid meshes + vertebra hinge-chain) and write viewer.xml."""
     m = 1e-3
-    z_base = (C.deck_top + C.flange_t) * m          # beam base (above the bolt flange)
-    dbase = C.d_base * m
+    seg = P.seg_len_mm * m
+    gap = P.gap_mm * m
+    pitch = seg + gap
+    hx, hy, hz = P.seg_t_mm / 2 * m, P.seg_w_mm / 2 * m, seg / 2
+    d = P.d_off_mm * m
     rh = P.horn_r_mm * m
-    boss = C.boss_h * m
+    yh = C.y_horn * m
+    z_horn = C.z_horn * m
+    z0 = (C.shelf_top + C.flange_t) * m           # base of vertebra 0 (above the bolt flange)
 
-    # nested finger chain, deepest last
+    # finger: vertebra 0 welded to the mount, then a hinge (about Y) at each spine gap
     def chain(i):
-        hx, hy, hz = dims[i]
-        pos = f"0 0 {0.0 if i == 0 else seg_len:.5f}"
-        sites = ""
-        if i == 0:
-            sites = (f'<site name="entry_p" pos="{dbase:.5f} 0 0" size="0.0007"/>'
-                     f'<site name="entry_n" pos="{-dbase:.5f} 0 0" size="0.0007"/>')
-        tip = f'<site name="tip" pos="0 0 {2*hz:.5f}" size="0.001"/>' if i == N_SEG - 1 else ""
-        inner = chain(i + 1) if i < N_SEG - 1 else ""
-        return (f'<body name="seg{i}" pos="{pos}">'
-                f'<joint name="j{i}" type="hinge" axis="0 1 0"/>'
-                f'<geom type="box" size="{hx:.5f} {hy:.5f} {hz:.5f}" pos="0 0 {hz:.5f}" '
-                f'material="tpu"/>{sites}{tip}{inner}</body>')
+        joint = "" if i == 0 else f'<joint name="j{i-1}" type="hinge" axis="0 1 0" pos="0 0 {-gap/2:.5f}"/>'
+        pos = f"0 {yh:.5f} {z0 + hz:.5f}" if i == 0 else f"0 0 {pitch:.5f}"
+        sites = (f'<site name="entry_p" pos="{d:.5f} 0 {-hz:.5f}" size="0.0008"/>'
+                 f'<site name="entry_n" pos="{-d:.5f} 0 {-hz:.5f}" size="0.0008"/>') if i == 0 else ""
+        inner = chain(i + 1) if i < P.n_vert - 1 else ""
+        return (f'<body name="v{i}" pos="{pos}">{joint}'
+                f'<geom type="box" size="{hx:.5f} {hy:.5f} {hz:.5f}" material="tpu"/>'
+                f'{sites}{inner}</body>')
 
-    xml = f"""<mujoco model="tendril_viewer">
+    xml = f"""<mujoco model="tendril_seg_viewer">
   <compiler meshdir="out" angle="radian" autolimits="true"/>
   <option gravity="0 0 0"/>
-  <visual><global offwidth="960" offheight="720"/></visual>
+  <visual><global offwidth="960" offheight="720"/>
+    <headlight ambient="0.45 0.45 0.45" diffuse="0.55 0.55 0.55" specular="0.1 0.1 0.1"/>
+  </visual>
   <asset>
     <mesh name="mount" file="mount.stl" scale="0.001 0.001 0.001"/>
     <mesh name="servo" file="servo.stl" scale="0.001 0.001 0.001"/>
     <mesh name="horn"  file="horn.stl"  scale="0.001 0.001 0.001"/>
-    <material name="pla"    rgba="0.30 0.33 0.38 1"/>
-    <material name="servo"  rgba="0.10 0.10 0.12 1"/>
-    <material name="horn"   rgba="0.85 0.85 0.88 1"/>
-    <material name="tpu"    rgba="0.90 0.45 0.15 1"/>
+    <material name="pla"   rgba="0.32 0.35 0.40 1"/>
+    <material name="servo" rgba="0.10 0.10 0.12 1"/>
+    <material name="horn"  rgba="0.85 0.85 0.88 1"/>
+    <material name="tpu"   rgba="0.90 0.45 0.15 1"/>
   </asset>
 
   <worldbody>
-    <light pos="0.06 -0.06 0.16" dir="-0.3 0.3 -1"/>
-    <camera name="iso" pos="0.10 -0.13 0.12" xyaxes="0.8 0.6 0 -0.30 0.40 0.87"/>
+    <light pos="0.08 0.18 0.22" dir="-0.2 -0.4 -1"/>
+    <camera name="iso" pos="0.16 0.16 0.12" xyaxes="-0.728 0.686 0 -0.130 -0.138 0.981"/>
 
     <geom type="mesh" mesh="mount" material="pla"   contype="0" conaffinity="0"/>
     <geom type="mesh" mesh="servo" material="servo" contype="0" conaffinity="0"/>
 
-    <!-- static bolt flange of the finger (rigid, bolted to the deck) -->
+    <!-- static bolt flange of the finger (rigid, bolted to the shelf) -->
     <geom type="box" size="{C.flange_l/2*m:.5f} {C.flange_w/2*m:.5f} {C.flange_t/2*m:.5f}"
-          pos="0 0 {(C.deck_top+C.flange_t/2)*m:.5f}" material="tpu" contype="0" conaffinity="0"/>
+          pos="0 {yh:.5f} {(C.shelf_top+C.flange_t/2)*m:.5f}" material="tpu" contype="0" conaffinity="0"/>
 
-    <!-- deck string guides -->
-    <site name="guide_p" pos="{dbase:.5f} 0 {C.deck_top*m:.5f}" size="0.0007"/>
-    <site name="guide_n" pos="{-dbase:.5f} 0 {C.deck_top*m:.5f}" size="0.0007"/>
+    <!-- deck string guides (align to the channels) -->
+    <site name="guide_p" pos="{d:.5f} {yh:.5f} {C.shelf_top*m:.5f}" size="0.0008"/>
+    <site name="guide_n" pos="{-d:.5f} {yh:.5f} {C.shelf_top*m:.5f}" size="0.0008"/>
 
-    <!-- servo horn (spins about Z) -->
-    <body name="horn_body" pos="0 0 {boss:.5f}">
-      <joint name="joint_horn" type="hinge" axis="0 0 1"/>
+    <!-- servo horn: spins about Y in the bending plane -->
+    <body name="horn_body" pos="0 {yh:.5f} {z_horn:.5f}">
+      <joint name="joint_horn" type="hinge" axis="0 1 0"/>
       <geom type="mesh" mesh="horn" material="horn" contype="0" conaffinity="0"/>
-      <site name="hole_p" pos="{rh:.5f} 0 {C.horn_t*m:.5f}" size="0.0008"/>
-      <site name="hole_n" pos="{-rh:.5f} 0 {C.horn_t*m:.5f}" size="0.0008"/>
+      <site name="hole_p" pos="{rh:.5f} 0 0" size="0.0009"/>
+      <site name="hole_n" pos="{-rh:.5f} 0 0" size="0.0009"/>
     </body>
 
-    <!-- flexible finger chain -->
-    <body name="finger" pos="0 0 {z_base:.5f}">
-      {chain(0)}
-    </body>
+    <!-- flexible finger: vertebra hinge-chain -->
+    {chain(0)}
   </worldbody>
 
   <tendon>
-    <spatial name="t_p" width="0.0006" rgba="0.95 0.95 0.95 1">
+    <spatial name="t_p" width="0.0007" rgba="0.95 0.95 0.95 1">
       <site site="hole_p"/><site site="guide_p"/><site site="entry_p"/></spatial>
-    <spatial name="t_n" width="0.0006" rgba="0.55 0.85 0.95 1">
+    <spatial name="t_n" width="0.0007" rgba="0.55 0.85 0.95 1">
       <site site="hole_n"/><site site="guide_n"/><site site="entry_n"/></spatial>
   </tendon>
 </mujoco>"""
     (HERE / "viewer.xml").write_text(xml)
     return HERE / "viewer.xml"
-
-
-def _seg_angles(psi):
-    """Per-segment incremental bend angle Δθ_i from the tendril.py curl shape at horn angle ψ."""
-    s, theta, _, _, _, _ = P.shape(psi)
-    sb = np.linspace(0.0, P.L, N_SEG + 1)
-    th_b = np.interp(sb, s, theta)
-    return np.diff(th_b)
 
 
 def _set(m, d, name, val):
@@ -134,7 +114,8 @@ def _set(m, d, name, val):
 
 def _apply(m, d, psi):
     _set(m, d, "joint_horn", psi)
-    for i, dth in enumerate(_seg_angles(psi)):
+    dth = P.joint_angle(psi)
+    for i in range(P.n_joints):
         _set(m, d, f"j{i}", dth)
     mujoco.mj_forward(m, d)
 
@@ -146,8 +127,8 @@ def view(cycles_per_s=0.2):
     d = mujoco.MjData(m)
     up = P.usable_psi
     dt = 1.0 / 60.0
-    print(f"\nviewer: servo-driven tendril | sweeps ±{np.rad2deg(up):.0f}° horn "
-          f"(±{P.usable_bend_deg:.0f}° curl, tension-limited)")
+    print(f"\nviewer: segmented tendril | sweeps ±{np.rad2deg(up):.0f}° horn "
+          f"(±{P.usable_bend_deg:.0f}° curl)")
     print("  close window to exit")
     with mjv.launch_passive(m, d) as v:
         ph = 0.0
@@ -199,8 +180,8 @@ def render(n_frames=48, height=720, width=960):
         psi = up * np.sin(2 * pi * k / (n_frames - 1))
         a.imshow(frames[k]); a.set_axis_off()
         a.set_title(f"horn {np.rad2deg(psi):+.0f}° → curl {P.bend_deg(psi):.0f}°", fontsize=9)
-    fig.suptitle("Servo-driven continuum tendril — one MG996R curls the TPU finger both ways",
-                 fontsize=12)
+    fig.suptitle("Segmented servo-driven tendril — horizontal-shaft servo curls the vertebrae-on-spine "
+                 "finger both ways", fontsize=11)
     fig.tight_layout(rect=(0, 0, 1, 0.97))
     fig.savefig(OUT / "sim_montage.png", dpi=110)
     print(f"  wrote {OUT/'sim_montage.png'}")

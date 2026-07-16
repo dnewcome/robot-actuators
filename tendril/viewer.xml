@@ -1,50 +1,50 @@
-<mujoco model="tendril_viewer">
+<mujoco model="tendril_seg_viewer">
   <compiler meshdir="out" angle="radian" autolimits="true"/>
   <option gravity="0 0 0"/>
-  <visual><global offwidth="960" offheight="720"/></visual>
+  <visual><global offwidth="960" offheight="720"/>
+    <headlight ambient="0.45 0.45 0.45" diffuse="0.55 0.55 0.55" specular="0.1 0.1 0.1"/>
+  </visual>
   <asset>
     <mesh name="mount" file="mount.stl" scale="0.001 0.001 0.001"/>
     <mesh name="servo" file="servo.stl" scale="0.001 0.001 0.001"/>
     <mesh name="horn"  file="horn.stl"  scale="0.001 0.001 0.001"/>
-    <material name="pla"    rgba="0.30 0.33 0.38 1"/>
-    <material name="servo"  rgba="0.10 0.10 0.12 1"/>
-    <material name="horn"   rgba="0.85 0.85 0.88 1"/>
-    <material name="tpu"    rgba="0.90 0.45 0.15 1"/>
+    <material name="pla"   rgba="0.32 0.35 0.40 1"/>
+    <material name="servo" rgba="0.10 0.10 0.12 1"/>
+    <material name="horn"  rgba="0.85 0.85 0.88 1"/>
+    <material name="tpu"   rgba="0.90 0.45 0.15 1"/>
   </asset>
 
   <worldbody>
-    <light pos="0.06 -0.06 0.16" dir="-0.3 0.3 -1"/>
-    <camera name="iso" pos="0.10 -0.13 0.12" xyaxes="0.8 0.6 0 -0.30 0.40 0.87"/>
+    <light pos="0.08 0.18 0.22" dir="-0.2 -0.4 -1"/>
+    <camera name="iso" pos="0.16 0.16 0.12" xyaxes="-0.728 0.686 0 -0.130 -0.138 0.981"/>
 
     <geom type="mesh" mesh="mount" material="pla"   contype="0" conaffinity="0"/>
     <geom type="mesh" mesh="servo" material="servo" contype="0" conaffinity="0"/>
 
-    <!-- static bolt flange of the finger (rigid, bolted to the deck) -->
-    <geom type="box" size="0.00800 0.01200 0.00200"
-          pos="0 0 0.02000" material="tpu" contype="0" conaffinity="0"/>
+    <!-- static bolt flange of the finger (rigid, bolted to the shelf) -->
+    <geom type="box" size="0.00900 0.01000 0.00200"
+          pos="0 0.00700 0.03900" material="tpu" contype="0" conaffinity="0"/>
 
-    <!-- deck string guides -->
-    <site name="guide_p" pos="0.00150 0 0.01800" size="0.0007"/>
-    <site name="guide_n" pos="-0.00150 0 0.01800" size="0.0007"/>
+    <!-- deck string guides (align to the channels) -->
+    <site name="guide_p" pos="0.00250 0.00700 0.03700" size="0.0008"/>
+    <site name="guide_n" pos="-0.00250 0.00700 0.03700" size="0.0008"/>
 
-    <!-- servo horn (spins about Z) -->
-    <body name="horn_body" pos="0 0 0.00600">
-      <joint name="joint_horn" type="hinge" axis="0 0 1"/>
+    <!-- servo horn: spins about Y in the bending plane -->
+    <body name="horn_body" pos="0 0.00700 0.01500">
+      <joint name="joint_horn" type="hinge" axis="0 1 0"/>
       <geom type="mesh" mesh="horn" material="horn" contype="0" conaffinity="0"/>
-      <site name="hole_p" pos="0.00250 0 0.00400" size="0.0008"/>
-      <site name="hole_n" pos="-0.00250 0 0.00400" size="0.0008"/>
+      <site name="hole_p" pos="0.00800 0 0" size="0.0009"/>
+      <site name="hole_n" pos="-0.00800 0 0" size="0.0009"/>
     </body>
 
-    <!-- flexible finger chain -->
-    <body name="finger" pos="0 0 0.02200">
-      <body name="seg0" pos="0 0 0.00000"><joint name="j0" type="hinge" axis="0 1 0"/><geom type="box" size="0.00368 0.00591 0.00266" pos="0 0 0.00266" material="tpu"/><site name="entry_p" pos="0.00150 0 0" size="0.0007"/><site name="entry_n" pos="-0.00150 0 0" size="0.0007"/><body name="seg1" pos="0 0 0.00531"><joint name="j1" type="hinge" axis="0 1 0"/><geom type="box" size="0.00354 0.00572 0.00266" pos="0 0 0.00266" material="tpu"/><body name="seg2" pos="0 0 0.00531"><joint name="j2" type="hinge" axis="0 1 0"/><geom type="box" size="0.00340 0.00553 0.00266" pos="0 0 0.00266" material="tpu"/><body name="seg3" pos="0 0 0.00531"><joint name="j3" type="hinge" axis="0 1 0"/><geom type="box" size="0.00326 0.00534 0.00266" pos="0 0 0.00266" material="tpu"/><body name="seg4" pos="0 0 0.00531"><joint name="j4" type="hinge" axis="0 1 0"/><geom type="box" size="0.00312 0.00516 0.00266" pos="0 0 0.00266" material="tpu"/><body name="seg5" pos="0 0 0.00531"><joint name="j5" type="hinge" axis="0 1 0"/><geom type="box" size="0.00298 0.00497 0.00266" pos="0 0 0.00266" material="tpu"/><body name="seg6" pos="0 0 0.00531"><joint name="j6" type="hinge" axis="0 1 0"/><geom type="box" size="0.00284 0.00478 0.00266" pos="0 0 0.00266" material="tpu"/><body name="seg7" pos="0 0 0.00531"><joint name="j7" type="hinge" axis="0 1 0"/><geom type="box" size="0.00270 0.00459 0.00266" pos="0 0 0.00266" material="tpu"/><body name="seg8" pos="0 0 0.00531"><joint name="j8" type="hinge" axis="0 1 0"/><geom type="box" size="0.00255 0.00441 0.00266" pos="0 0 0.00266" material="tpu"/><body name="seg9" pos="0 0 0.00531"><joint name="j9" type="hinge" axis="0 1 0"/><geom type="box" size="0.00241 0.00422 0.00266" pos="0 0 0.00266" material="tpu"/><body name="seg10" pos="0 0 0.00531"><joint name="j10" type="hinge" axis="0 1 0"/><geom type="box" size="0.00227 0.00403 0.00266" pos="0 0 0.00266" material="tpu"/><body name="seg11" pos="0 0 0.00531"><joint name="j11" type="hinge" axis="0 1 0"/><geom type="box" size="0.00213 0.00384 0.00266" pos="0 0 0.00266" material="tpu"/><body name="seg12" pos="0 0 0.00531"><joint name="j12" type="hinge" axis="0 1 0"/><geom type="box" size="0.00199 0.00366 0.00266" pos="0 0 0.00266" material="tpu"/><body name="seg13" pos="0 0 0.00531"><joint name="j13" type="hinge" axis="0 1 0"/><geom type="box" size="0.00185 0.00347 0.00266" pos="0 0 0.00266" material="tpu"/><body name="seg14" pos="0 0 0.00531"><joint name="j14" type="hinge" axis="0 1 0"/><geom type="box" size="0.00171 0.00328 0.00266" pos="0 0 0.00266" material="tpu"/><body name="seg15" pos="0 0 0.00531"><joint name="j15" type="hinge" axis="0 1 0"/><geom type="box" size="0.00157 0.00309 0.00266" pos="0 0 0.00266" material="tpu"/><site name="tip" pos="0 0 0.00531" size="0.001"/></body></body></body></body></body></body></body></body></body></body></body></body></body></body></body></body>
-    </body>
+    <!-- flexible finger: vertebra hinge-chain -->
+    <body name="v0" pos="0 0.00700 0.04450"><geom type="box" size="0.00400 0.00600 0.00350" material="tpu"/><site name="entry_p" pos="0.00250 0 -0.00350" size="0.0008"/><site name="entry_n" pos="-0.00250 0 -0.00350" size="0.0008"/><body name="v1" pos="0 0 0.01000"><joint name="j0" type="hinge" axis="0 1 0" pos="0 0 -0.00150"/><geom type="box" size="0.00400 0.00600 0.00350" material="tpu"/><body name="v2" pos="0 0 0.01000"><joint name="j1" type="hinge" axis="0 1 0" pos="0 0 -0.00150"/><geom type="box" size="0.00400 0.00600 0.00350" material="tpu"/><body name="v3" pos="0 0 0.01000"><joint name="j2" type="hinge" axis="0 1 0" pos="0 0 -0.00150"/><geom type="box" size="0.00400 0.00600 0.00350" material="tpu"/><body name="v4" pos="0 0 0.01000"><joint name="j3" type="hinge" axis="0 1 0" pos="0 0 -0.00150"/><geom type="box" size="0.00400 0.00600 0.00350" material="tpu"/><body name="v5" pos="0 0 0.01000"><joint name="j4" type="hinge" axis="0 1 0" pos="0 0 -0.00150"/><geom type="box" size="0.00400 0.00600 0.00350" material="tpu"/><body name="v6" pos="0 0 0.01000"><joint name="j5" type="hinge" axis="0 1 0" pos="0 0 -0.00150"/><geom type="box" size="0.00400 0.00600 0.00350" material="tpu"/><body name="v7" pos="0 0 0.01000"><joint name="j6" type="hinge" axis="0 1 0" pos="0 0 -0.00150"/><geom type="box" size="0.00400 0.00600 0.00350" material="tpu"/><body name="v8" pos="0 0 0.01000"><joint name="j7" type="hinge" axis="0 1 0" pos="0 0 -0.00150"/><geom type="box" size="0.00400 0.00600 0.00350" material="tpu"/></body></body></body></body></body></body></body></body></body>
   </worldbody>
 
   <tendon>
-    <spatial name="t_p" width="0.0006" rgba="0.95 0.95 0.95 1">
+    <spatial name="t_p" width="0.0007" rgba="0.95 0.95 0.95 1">
       <site site="hole_p"/><site site="guide_p"/><site site="entry_p"/></spatial>
-    <spatial name="t_n" width="0.0006" rgba="0.55 0.85 0.95 1">
+    <spatial name="t_n" width="0.0007" rgba="0.55 0.85 0.95 1">
       <site site="hole_n"/><site site="guide_n"/><site site="entry_n"/></spatial>
   </tendon>
 </mujoco>
