@@ -35,6 +35,12 @@ help:
 	@echo "  make tendril                servo-driven TPU continuum finger: curl/force statics"
 	@echo "  make tendril-cad            build the tendril CAD (TPU finger + PLA servo mount)"
 	@echo "  make sim-tendril            build CAD + open its curling MuJoCo viewer"
+	@echo "  make zipchain               zip-chain LINEAR actuator: buckling-limited push envelope"
+	@echo "  make zipchain-cad           build the zip-chain CAD (2 strands + sprocket + head)"
+	@echo "  make sim-zipchain           build CAD + open its deploy MuJoCo viewer"
+	@echo "  make yzipper                Y-zipper 3-strip flex<->rigid: stiffness-switch model"
+	@echo "  make yzipper-cad            build the Y-zipper CAD (3 strips + 3-way slider)"
+	@echo "  make sim-yzipper            build CAD + open its soft->rigid MuJoCo viewer"
 
 # --- centre-output cycloidal ------------------------------------------------
 .PHONY: cycloidal-center
@@ -159,3 +165,29 @@ tendril-cad:
 .PHONY: sim-tendril
 sim-tendril: tendril-cad
 	$(PY) tendril/sim.py $(REV)
+
+# --- zip-chain LINEAR actuator (2-strip rigid chain, buckling-limited push) -----
+.PHONY: zipchain
+zipchain:
+	$(PY) zipchain/zipchain.py
+
+.PHONY: zipchain-cad
+zipchain-cad:
+	$(PY) zipchain/cad.py
+
+.PHONY: sim-zipchain
+sim-zipchain: zipchain-cad
+	$(PY) zipchain/sim.py $(REV)
+
+# --- Y-zipper 3-strip flexible<->rigid STIFFNESS element (closed Δ section) ------
+.PHONY: yzipper
+yzipper:
+	$(PY) yzipper/yzipper.py
+
+.PHONY: yzipper-cad
+yzipper-cad:
+	$(PY) yzipper/cad.py
+
+.PHONY: sim-yzipper
+sim-yzipper: yzipper-cad
+	$(PY) yzipper/sim.py $(REV)

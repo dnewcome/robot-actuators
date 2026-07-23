@@ -1,0 +1,48 @@
+<mujoco model="zipchain_viewer">
+  <compiler meshdir="out" angle="radian" autolimits="true"/>
+  <option gravity="0 0 0"/>
+  <visual><global offwidth="960" offheight="720"/>
+    <headlight ambient="0.45 0.45 0.45" diffuse="0.55 0.55 0.55" specular="0.1 0.1 0.1"/>
+  </visual>
+  <asset>
+    <mesh name="head"     file="head.stl"     scale="0.001 0.001 0.001"/>
+    <mesh name="sprocket" file="sprocket.stl" scale="0.001 0.001 0.001"/>
+    <mesh name="strand"   file="strand.stl"   scale="0.001 0.001 0.001"/>
+    <material name="pla"    rgba="0.32 0.35 0.40 1"/>
+    <material name="gold"   rgba="0.85 0.68 0.20 1"/>
+    <material name="stA"    rgba="0.90 0.90 0.92 1"/>
+    <material name="stB"    rgba="0.35 0.72 0.90 1"/>
+    <material name="load"   rgba="0.85 0.30 0.25 1"/>
+  </asset>
+
+  <worldbody>
+    <light pos="0.25 0.5 0.7" dir="-0.2 -0.4 -1"/>
+    <camera name="iso" pos="0.52 0.52 0.40" xyaxes="-0.728 0.686 0 -0.130 -0.138 0.981"/>
+
+    <!-- static guide / merge head -->
+    <geom type="mesh" mesh="head" material="pla" contype="0" conaffinity="0"/>
+
+    <!-- zip sprocket: spins about Y at the head centre -->
+    <body name="sprk" pos="0 0 0.01300">
+      <joint name="spin" type="hinge" axis="0 1 0"/>
+      <geom type="mesh" mesh="sprocket" material="gold" contype="0" conaffinity="0"/>
+    </body>
+
+    <!-- deployed column: two interlaced strands on a slide joint (deploy along Z).
+         The column is stacked to length VIS = 2·TOTAL so its base stays fed through
+         the head across the full stroke instead of lifting off (kinematic viewer). -->
+    <body name="column" pos="0 0 -0.29400">
+      <joint name="deploy" type="slide" axis="0 0 1" range="0 0.30000"/>
+      <geom type="mesh" mesh="strand" material="stA" contype="0" conaffinity="0"/>
+      <geom type="mesh" mesh="strand" material="stA" contype="0" conaffinity="0"
+            pos="0 0 0.16000"/>
+      <geom type="mesh" mesh="strand" material="stB" contype="0" conaffinity="0"
+            euler="0 0 3.14159" pos="0 0 0.00500"/>
+      <geom type="mesh" mesh="strand" material="stB" contype="0" conaffinity="0"
+            euler="0 0 3.14159" pos="0 0 0.16500"/>
+      <!-- payload riding the column tip -->
+      <geom type="box" size="0.01280 0.00960 0.010"
+            pos="0 0 0.33000" material="load" contype="0" conaffinity="0"/>
+    </body>
+  </worldbody>
+</mujoco>
